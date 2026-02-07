@@ -2,6 +2,8 @@ package com.swp.ckms.service;
 
 import com.swp.ckms.dto.request.CreateUserRequest;
 import com.swp.ckms.dto.response.CreateUserResponse;
+import com.swp.ckms.dto.request.ForgotPasswordRequest;
+import com.swp.ckms.dto.request.ResetPasswordRequest;
 import com.swp.ckms.entity.User;
 import com.swp.ckms.dto.request.ActivateAccountRequest;
 import com.swp.ckms.enums.UserStatus;
@@ -31,6 +33,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final EmailService emailService;
     private final ApplicationEventPublisher eventPublisher;
     private final PasswordEncoder passwordEncoder;
 
@@ -108,6 +111,7 @@ public class UserService {
 
     @Transactional
     public void activateAccount(ActivateAccountRequest request) {
+        // ... (existing code)
         // log.info("Request to activate account with token: {}", request.getToken());
         String tokenHash = hashToken(request.getToken());
         // log.info("Computed hash from request token: {}", tokenHash);
@@ -125,6 +129,55 @@ public class UserService {
         user.setPassword(passwordEncoder.encode(request.getPassword()));
         user.setStatus(UserStatus.ACTIVE);
         user.setIsActive(true);
+        user.setVerificationTokenHash(null);
+        user.setVerificationTokenExpiresAt(null);
+
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void forgotPassword(ForgotPasswordRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new RuntimeException("User not found with email: " + request.getEmail()));
+
+        // Check if user is active or pending (not banned/deleted)
+        if (user.getStatus() == UserStatus.INACTIVE) {
+             throw new RuntimeException("Account is inactive");
+        }
+
+        String rawToken = generateSecureToken();
+        String tokenHash = hashToken(rawToken);
+
+        user.setVerificationTokenHash(tokenHash);
+        user.setVerificationTokenExpiresAt(LocalDateTime.now().plusMinutes(15)); // Short expiry for reset
+
+        userRepository.save(user);
+
+        // In a real app, this should be a frontend URL like: https://myapp.com/reset-password?token=...
+        // For testing/backend-only, we just send the token or a dummy link
+        String resetLink = "http://localhost:8080/reset-password-ui?token=" + rawToken; 
+        
+        emailService.sendResetPasswordEmail(user.getEmail(), user.getFullName(), resetLink);
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        String tokenHash = hashToken(request.getToken());
+        
+        User user = userRepository.findByVerificationTokenHash(tokenHash)
+                .orElseThrow(() -> new RuntimeException("Invalid or expired reset token"));
+
+        if (user.getVerificationTokenExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Reset token has expired");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        
+        if (user.getStatus() == UserStatus.PENDING_VERIFICATION) {
+            user.setStatus(UserStatus.ACTIVE);
+            user.setIsActive(true);
+        }
+
         user.setVerificationTokenHash(null);
         user.setVerificationTokenExpiresAt(null);
 

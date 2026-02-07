@@ -62,4 +62,20 @@ public class AuthService {
     public void logout(LogoutRequest logoutRequest) {
         refreshTokenService.deleteByToken(logoutRequest.getRefreshToken());
     }
+
+    public LoginResponse refreshToken(String refreshToken) {
+        return refreshTokenService.findByToken(refreshToken)
+                .map(refreshTokenService::verifyExpiration)
+                .map(RefreshToken::getUser)
+                .map(user -> {
+                    String accessToken = tokenProvider.generateToken(user.getUsername(), user.getUserId(), user.getRole().getRoleName());
+                    return LoginResponse.builder()
+                            .accessToken(accessToken)
+                            .refreshToken(refreshToken)
+                            .accessTokenExpiresIn(jwtExpiration / 1000)
+                            .build();
+                })
+                .orElseThrow(() -> new com.swp.ckms.exception.auth.RefreshTokenExpiredException(
+                        "Refresh token is not in database!"));
+    }
 }
