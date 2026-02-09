@@ -28,6 +28,7 @@ public class UserCreatedListener {
         emailService.sendVerificationEmail(
                 event.getUser().getEmail(), 
                 event.getUser().getFullName(),
+                event.getUser().getUsername(),
                 verificationLink
         );
     }

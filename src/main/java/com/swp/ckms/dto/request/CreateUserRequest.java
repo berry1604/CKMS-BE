@@ -23,4 +23,7 @@ public class CreateUserRequest {
     private Long storeId;
 
     private Long kitchenId;
+
+    @NotBlank(message = "Role ID is required")
+    private Long roleId;
 }

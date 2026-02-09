@@ -9,7 +9,7 @@ public class EmailUtils {
         return "Account Verification - CKMS";
     }
 
-    public String getVerificationEmailBody(String fullName, String verificationLink) {
+    public String getVerificationEmailBody(String fullName, String username, String verificationLink) {
     return "<!DOCTYPE html>\n" +
             "<html>\n" +
             "<head>\n" +
@@ -40,6 +40,7 @@ public class EmailUtils {
             "            <div class=\"email-body\">\n" +
             "                <div class=\"greeting\">Xin chào " + fullName + "! 👋</div>\n" +
             "                <p class=\"text-content\">Chào mừng bạn đến với <strong>Central Kitchen Management System</strong>.</p>\n" +
+            "                <p class=\"text-content\">Username của bạn là: <strong>" + username + "</strong></p>\n" +
             "                <p class=\"text-content\">Để bắt đầu sử dụng hệ thống, bạn vui lòng xác thực địa chỉ email bằng nút bên dưới nhé.</p>\n" +
             "                \n" +
             "                <div style=\"margin: 30px 0;\">\n" +
@@ -56,5 +57,30 @@ public class EmailUtils {
             "    </div>\n" +
             "</body>\n" +
             "</html>";
-}
+    }
+
+    public String getResetPasswordEmailBody(String fullName, String resetLink) {
+        return "<!DOCTYPE html>\n" +
+                "<html>\n" +
+                "<head>\n" +
+                "    <meta charset=\"UTF-8\">\n" +
+                "    <title>Reset Password</title>\n" +
+                "    <style>\n" +
+                "        body { font-family: 'Segoe UI', sans-serif; background-color: #f9f9f9; padding: 20px; }\n" +
+                "        .container { max-width: 500px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }\n" +
+                "        .btn { background-color: #d32f2f; color: #fff !important; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 20px; }\n" +
+                "    </style>\n" +
+                "</head>\n" +
+                "<body>\n" +
+                "    <div class=\"container\">\n" +
+                "        <h2>Đặt lại mật khẩu</h2>\n" +
+                "        <p>Xin chào <strong>" + fullName + "</strong>,</p>\n" +
+                "        <p>Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn.</p>\n" +
+                "        <p>Vui lòng nhấn vào nút bên dưới để tạo mật khẩu mới:</p>\n" +
+                "        <a href=\"" + resetLink + "\" class=\"btn\">Đặt lại mật khẩu</a>\n" +
+                "        <p style=\"margin-top:20px; font-size:12px; color:#666;\">Nếu bạn không yêu cầu, vui lòng bỏ qua email này.</p>\n" +
+                "    </div>\n" +
+                "</body>\n" +
+                "</html>";
+    }
 }

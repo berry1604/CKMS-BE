@@ -1,12 +1,20 @@
 package com.swp.ckms.service;
 
 import com.swp.ckms.dto.request.CreateUserRequest;
+import com.swp.ckms.dto.response.CreateUserResponse;
+import com.swp.ckms.dto.request.ForgotPasswordRequest;
+import com.swp.ckms.dto.request.ResetPasswordRequest;
 import com.swp.ckms.entity.User;
+import com.swp.ckms.dto.request.ActivateAccountRequest;
 import com.swp.ckms.enums.UserStatus;
 import com.swp.ckms.event.UserCreatedEvent;
+import com.swp.ckms.entity.Role;
+import com.swp.ckms.repository.RoleRepository;
 import com.swp.ckms.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,20 +28,30 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class UserService {
 
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+    private final EmailService emailService;
     private final ApplicationEventPublisher eventPublisher;
+    private final PasswordEncoder passwordEncoder;
 
     @Transactional
-    public User createUser(CreateUserRequest request) {
+    public CreateUserResponse createUser(CreateUserRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new RuntimeException("Email already exists");
         }
 
         String username = generateUniqueUsername(request.getEmail());
         String rawToken = generateSecureToken();
+        // log.info("Generated raw token for {}: {}", username, rawToken);
         String tokenHash = hashToken(rawToken);
+        // log.info("Generated hash for {}: {}", username, tokenHash);
+
+        // Fetch Role
+        Role role = roleRepository.findById(request.getRoleId())
+                .orElseThrow(() -> new RuntimeException("Role not found"));
 
         User user = User.builder()
                 .username(username)
@@ -44,6 +62,7 @@ public class UserService {
                 .verificationTokenHash(tokenHash)
                 .verificationTokenExpiresAt(LocalDateTime.now().plusHours(24))
                 .isActive(true)
+                .role(role)
                 // store and kitchen handling omitted for brevity as per plan default
                 .build();
 
@@ -51,7 +70,13 @@ public class UserService {
 
         eventPublisher.publishEvent(new UserCreatedEvent(this, savedUser, rawToken));
 
-        return savedUser;
+        return CreateUserResponse.builder()
+                .username(savedUser.getUsername())
+                .email(savedUser.getEmail())
+                .fullName(savedUser.getFullName())
+                .token(rawToken) // Expose token for testing/dev
+                .message("User created successfully. Please check email or use this token to activate.")
+                .build();
     }
 
     private String generateUniqueUsername(String email) {
@@ -82,5 +107,80 @@ public class UserService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("Error hashing token", e);
         }
+    }
+
+    @Transactional
+    public void activateAccount(ActivateAccountRequest request) {
+        // ... (existing code)
+        // log.info("Request to activate account with token: {}", request.getToken());
+        String tokenHash = hashToken(request.getToken());
+        // log.info("Computed hash from request token: {}", tokenHash);
+        
+        User user = userRepository.findByVerificationTokenHash(tokenHash)
+                .orElseThrow(() -> {
+                    // log.error("Token hash not found in DB: {}", tokenHash);
+                    return new RuntimeException("Invalid or expired activation token");
+                });
+
+        if (user.getVerificationTokenExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Activation token has expired");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setStatus(UserStatus.ACTIVE);
+        user.setIsActive(true);
+        user.setVerificationTokenHash(null);
+        user.setVerificationTokenExpiresAt(null);
+
+        userRepository.save(user);
+    }
+
+    @Transactional
+    public void forgotPassword(ForgotPasswordRequest request) {
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new RuntimeException("User not found with email: " + request.getEmail()));
+
+        // Check if user is active or pending (not banned/deleted)
+        if (user.getStatus() == UserStatus.INACTIVE) {
+             throw new RuntimeException("Account is inactive");
+        }
+
+        String rawToken = generateSecureToken();
+        String tokenHash = hashToken(rawToken);
+
+        user.setVerificationTokenHash(tokenHash);
+        user.setVerificationTokenExpiresAt(LocalDateTime.now().plusMinutes(15)); // Short expiry for reset
+
+        userRepository.save(user);
+
+        // In a real app, this should be a frontend URL like: https://myapp.com/reset-password?token=...
+        // For testing/backend-only, we just send the token or a dummy link
+        String resetLink = "http://localhost:8080/reset-password-ui?token=" + rawToken; 
+        
+        emailService.sendResetPasswordEmail(user.getEmail(), user.getFullName(), resetLink);
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        String tokenHash = hashToken(request.getToken());
+        
+        User user = userRepository.findByVerificationTokenHash(tokenHash)
+                .orElseThrow(() -> new RuntimeException("Invalid or expired reset token"));
+
+        if (user.getVerificationTokenExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("Reset token has expired");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        
+        if (user.getStatus() == UserStatus.PENDING_VERIFICATION) {
+            user.setStatus(UserStatus.ACTIVE);
+            user.setIsActive(true);
+        }
+
+        user.setVerificationTokenHash(null);
+        user.setVerificationTokenExpiresAt(null);
+
+        userRepository.save(user);
     }
 }

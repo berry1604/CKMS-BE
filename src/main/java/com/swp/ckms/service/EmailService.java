@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -23,7 +24,7 @@ public class EmailService {
     @Value("${spring.mail.username:noreply@example.com}")
     private String fromEmail;
 
-    public void sendVerificationEmail(String to, String fullName, String verificationLink) {
+    public void sendVerificationEmail(String to, String fullName, String username, String verificationLink) {
         try {
             log.info("Sending verification email to {}", to);
             
@@ -33,7 +34,7 @@ public class EmailService {
             helper.setFrom(fromEmail);
             helper.setTo(to);
             helper.setSubject(emailUtils.getVerificationEmailSubject());
-            helper.setText(emailUtils.getVerificationEmailBody(fullName, verificationLink), true);
+            helper.setText(emailUtils.getVerificationEmailBody(fullName, username, verificationLink), true);
 
             mailSender.send(message);
             log.info("Verification email sent successfully to {}", to);
@@ -41,6 +42,22 @@ public class EmailService {
             log.error("Failed to send verification email to {}", to, e);
         } catch (Exception e) {
             log.error("Unexpected error sending email to {}", to, e);
+        }
+    }
+    @Async
+    public void sendResetPasswordEmail(String toEmail, String fullName, String resetLink) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            
+            helper.setFrom(fromEmail);
+            helper.setTo(toEmail);
+            helper.setSubject("Yêu cầu đặt lại mật khẩu - CKMS");
+            helper.setText(emailUtils.getResetPasswordEmailBody(fullName, resetLink), true);
+            
+            mailSender.send(message);
+        } catch (MessagingException e) {
+            throw new RuntimeException("Failed to send reset password email", e);
         }
     }
 }

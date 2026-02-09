@@ -1,6 +1,7 @@
 package com.swp.ckms.controller;
 
 import com.swp.ckms.dto.request.CreateUserRequest;
+import com.swp.ckms.dto.response.CreateUserResponse;
 import com.swp.ckms.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,8 +21,7 @@ public class UserController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('CREATE_USER')")
-    public ResponseEntity<String> createUser(@Valid @RequestBody CreateUserRequest request) {
-        userService.createUser(request);
-        return ResponseEntity.ok("User created successfully. Please check your email to verify account.");
+    public ResponseEntity<CreateUserResponse> createUser(@Valid @RequestBody CreateUserRequest request) {
+        return ResponseEntity.ok(userService.createUser(request));
     }
 }
