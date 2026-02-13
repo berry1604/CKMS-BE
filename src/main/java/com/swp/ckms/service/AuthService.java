@@ -29,8 +29,18 @@ public class AuthService {
     private final UserRepository userRepository;
     private final RefreshTokenService refreshTokenService;
 
-    @Value("${jwt.expiration}")
-    private long jwtExpiration;
+    @Value("${jwt.accessExpiration}")
+    private long accessExpirationMs;
+
+    @Value("${jwt.refreshExpiration}")
+    private long refreshExpirationMs;
+
+    @jakarta.annotation.PostConstruct
+    public void validateConfig() {
+        if (accessExpirationMs <= 0 || refreshExpirationMs <= 0) {
+            throw new IllegalStateException("JWT expiration config must be > 0");
+        }
+    }
 
     public LoginResponse login(LoginRequest loginRequest) {
         Authentication authentication = authenticationManager.authenticate(
@@ -55,7 +65,9 @@ public class AuthService {
         return LoginResponse.builder()
                 .accessToken(jwt)
                 .refreshToken(refreshToken.getToken())
-                .accessTokenExpiresIn(jwtExpiration / 1000)
+                .accessTokenExpiresIn(accessExpirationMs / 1000)
+                .refreshTokenExpiresIn(java.time.Duration.between(java.time.Instant.now(), refreshToken.getExpiryDate()).getSeconds())
+                .userId(user.getUserId())
                 .build();
     }
 
@@ -63,19 +75,21 @@ public class AuthService {
         refreshTokenService.deleteByToken(logoutRequest.getRefreshToken());
     }
 
-    public LoginResponse refreshToken(String refreshToken) {
-        return refreshTokenService.findByToken(refreshToken)
-                .map(refreshTokenService::verifyExpiration)
-                .map(RefreshToken::getUser)
-                .map(user -> {
-                    String accessToken = tokenProvider.generateToken(user.getUsername(), user.getUserId(), user.getRole().getRoleName());
-                    return LoginResponse.builder()
-                            .accessToken(accessToken)
-                            .refreshToken(refreshToken)
-                            .accessTokenExpiresIn(jwtExpiration / 1000)
-                            .build();
-                })
-                .orElseThrow(() -> new com.swp.ckms.exception.auth.RefreshTokenExpiredException(
-                        "Refresh token is not in database!"));
+    public LoginResponse refreshToken(String requestRefreshToken) {
+        RefreshToken token = refreshTokenService.findByToken(requestRefreshToken)
+                .orElseThrow(() -> new com.swp.ckms.exception.auth.RefreshTokenExpiredException("Refresh token is not in database!"));
+
+        refreshTokenService.verifyExpiration(token);
+
+        User user = token.getUser();
+        String accessToken = tokenProvider.generateToken(user.getUsername(), user.getUserId(), user.getRole().getRoleName());
+
+        return LoginResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(requestRefreshToken)
+                .accessTokenExpiresIn(accessExpirationMs / 1000)
+                .refreshTokenExpiresIn(java.time.Duration.between(java.time.Instant.now(), token.getExpiryDate()).getSeconds())
+                .userId(user.getUserId())
+                .build();
     }
 }
