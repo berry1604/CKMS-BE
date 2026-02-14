@@ -15,6 +15,18 @@ public enum AppPrivilege {
     VIEW_ROLE("VIEW_ROLE", "Can view role details"),
     UPDATE_ROLE("UPDATE_ROLE", "Can update role details"),
     DELETE_ROLE("DELETE_ROLE", "Can delete roles"),
+
+    // Category Management
+    CREATE_CATEGORY("CREATE_CATEGORY", "Can create new categories"),
+    VIEW_CATEGORY("VIEW_CATEGORY", "Can view categories"),
+    UPDATE_CATEGORY("UPDATE_CATEGORY", "Can update categories"),
+    DELETE_CATEGORY("DELETE_CATEGORY", "Can delete categories"),
+
+    // Material Management
+    CREATE_MATERIAL("CREATE_MATERIAL", "Can create new materials"),
+    VIEW_MATERIAL("VIEW_MATERIAL", "Can view materials"),
+    UPDATE_MATERIAL("UPDATE_MATERIAL", "Can update materials"),
+    DELETE_MATERIAL("DELETE_MATERIAL", "Can delete materials"),
     
     // Other example privileges
     VIEW_DASHBOARD("VIEW_DASHBOARD", "Can view dashboard");

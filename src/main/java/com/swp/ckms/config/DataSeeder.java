@@ -46,34 +46,49 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedAdminUser(Set<Privilege> allPrivileges) {
-        String roleName = "Admin";
-        
-        Role adminRole = roleRepository.findByRoleName(roleName)
+        // 1. Seed ADMIN Role & User
+        Role adminRole = seedRole("ADMIN", allPrivileges);
+        seedUser("admin", "admin@ckms.com", "admin", "System Administrator", adminRole);
+
+        // 2. Seed MANAGER Role & User
+        Set<Privilege> managerPrivileges = allPrivileges.stream()
+                .filter(p -> p.getCode().contains("CATEGORY") || p.getCode().contains("MATERIAL"))
+                .collect(Collectors.toSet());
+        Role managerRole = seedRole("MANAGER", managerPrivileges);
+        seedUser("manager", "manager@ckms.com", "manager", "Store Manager", managerRole);
+
+        // 3. Seed STAFF Role & User (View only)
+        Set<Privilege> staffPrivileges = allPrivileges.stream()
+                .filter(p -> p.getCode().startsWith("VIEW_"))
+                .collect(Collectors.toSet());
+        Role staffRole = seedRole("STAFF", staffPrivileges);
+        seedUser("staff", "staff@ckms.com", "staff", "Kitchen Staff", staffRole);
+    }
+
+    private Role seedRole(String roleName, Set<Privilege> privileges) {
+        return roleRepository.findByRoleName(roleName)
                 .map(role -> {
-                    // Update privileges if role exists
-                    role.setPrivileges(allPrivileges);
-                    return roleRepository.save(role); 
+                    role.setPrivileges(privileges);
+                    return roleRepository.save(role);
                 })
                 .orElseGet(() -> roleRepository.save(Role.builder()
                         .roleName(roleName)
-                        .privileges(allPrivileges)
+                        .privileges(privileges)
                         .build()));
+    }
 
-        if (!userRepository.existsByUsername("admin")) {
+    private void seedUser(String username, String email, String password, String fullName, Role role) {
+        if (!userRepository.existsByUsername(username)) {
             userRepository.save(User.builder()
-                    .username("admin")
-                    .email("admin@ckms.com")
-                    .password(passwordEncoder.encode("admin"))
-                    .fullName("System Administrator")
+                    .username(username)
+                    .email(email)
+                    .password(passwordEncoder.encode(password))
+                    .fullName(fullName)
                     .status(com.swp.ckms.enums.UserStatus.ACTIVE)
-                    .role(adminRole)
+                    .role(role)
                     .isActive(true)
                     .build());
-            System.out.println(">>> Seeded default admin user: admin / admin");
-        } else {
-            // Ensure existing admin user has the correct role reference if needed
-            // (Assumed already set, but good to double check in a real migration scenario)
-             System.out.println(">>> Admin user already exists. Privileges updated.");
+            System.out.println(">>> Seeded user: " + username);
         }
     }
 }
