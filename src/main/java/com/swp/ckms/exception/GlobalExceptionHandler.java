@@ -69,6 +69,16 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
     }
 
+    @ExceptionHandler(DuplicateNameException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateName(DuplicateNameException ex) {
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(CategoryInUseException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCategoryInUse(CategoryInUseException ex) {
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
     @ExceptionHandler(BusinessRuleViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessRuleViolation(BusinessRuleViolationException ex) {
         return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());

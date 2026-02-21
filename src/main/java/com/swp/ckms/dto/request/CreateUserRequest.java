@@ -2,6 +2,7 @@ package com.swp.ckms.dto.request;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -24,6 +25,6 @@ public class CreateUserRequest {
 
     private Long kitchenId;
 
-    @NotBlank(message = "Role ID is required")
+    @NotNull(message = "Role ID is required")
     private Long roleId;
 }
