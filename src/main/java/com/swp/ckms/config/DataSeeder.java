@@ -13,6 +13,17 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.swp.ckms.entity.CentralKitchen;
+import com.swp.ckms.entity.FranchiseStore;
+import com.swp.ckms.entity.KitchenWarehouse;
+import com.swp.ckms.entity.StoreWarehouse;
+import com.swp.ckms.repository.CentralKitchenRepository;
+import com.swp.ckms.repository.FranchiseStoreRepository;
+import com.swp.ckms.repository.KitchenWarehouseRepository;
+import com.swp.ckms.repository.PrivilegeRepository;
+import com.swp.ckms.repository.RoleRepository;
+import com.swp.ckms.repository.StoreWarehouseRepository;
+
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Optional;
@@ -27,12 +38,17 @@ public class DataSeeder implements CommandLineRunner {
     private final RoleRepository roleRepository;
     private final PrivilegeRepository privilegeRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CentralKitchenRepository centralKitchenRepository;
+    private final KitchenWarehouseRepository warehouseRepository;
+    private final FranchiseStoreRepository franchiseStoreRepository;
+    private final StoreWarehouseRepository storeWarehouseRepository;
 
     @Override
     @Transactional
     public void run(String... args) throws Exception {
         Set<Privilege> allPrivileges = seedPrivileges();
         seedAdminUser(allPrivileges);
+        seedKitchenAndWarehouse();
     }
 
     private Set<Privilege> seedPrivileges() {
@@ -89,6 +105,39 @@ public class DataSeeder implements CommandLineRunner {
                     .isActive(true)
                     .build());
             System.out.println(">>> Seeded user: " + username);
+        }
+    }
+
+    private void seedKitchenAndWarehouse() {
+        // 1. Seed Bếp Trung Tâm và Kho Bếp (ID = 1)
+        if (!centralKitchenRepository.existsById(1L)) {
+            CentralKitchen kitchen = centralKitchenRepository.save(CentralKitchen.builder()
+                    .name("Bếp Trung Tâm Chính")
+                    .address("Hệ Thống Bếp Mặc Định")
+                    .build());
+            System.out.println(">>> Seeded default Central Kitchen");
+
+            warehouseRepository.save(KitchenWarehouse.builder()
+                    .name("Kho Bếp Trung Tâm")
+                    .kitchen(kitchen)
+                    .build());
+            System.out.println(">>> Seeded default Kitchen Warehouse");
+        }
+
+        // 2. Seed Cửa Hàng Nhượng Quyền và Kho Cửa Hàng (ID = 1)
+        if (!franchiseStoreRepository.existsById(1L)) {
+            FranchiseStore store = franchiseStoreRepository.save(FranchiseStore.builder()
+                    .name("Cửa Hàng Mẫu CKMS")
+                    .address("Số 1 Mạc Đĩnh Chi")
+                    .paymentCycle("MONTHLY")
+                    .build());
+            System.out.println(">>> Seeded default Franchise Store");
+
+            storeWarehouseRepository.save(StoreWarehouse.builder()
+                    .name("Kho Cửa Hàng (Mẫu)")
+                    .store(store)
+                    .build());
+            System.out.println(">>> Seeded default Store Warehouse");
         }
     }
 }

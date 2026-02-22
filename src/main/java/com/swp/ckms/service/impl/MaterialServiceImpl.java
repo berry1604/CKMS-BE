@@ -38,7 +38,6 @@ public class MaterialServiceImpl implements MaterialService {
         Material material = Material.builder()
                 .name(request.getName())
                 .unit(request.getUnit())
-                .minStockLevel(request.getMinStockLevel())
                 .isActive(true)
                 .build();
 
@@ -58,7 +57,6 @@ public class MaterialServiceImpl implements MaterialService {
 
         material.setName(request.getName());
         material.setUnit(request.getUnit());
-        material.setMinStockLevel(request.getMinStockLevel());
 
         return mapToResponse(materialRepository.save(material));
     }
@@ -69,7 +67,6 @@ public class MaterialServiceImpl implements MaterialService {
                 .id(material.getId())
                 .name(material.getName())
                 .unit(material.getUnit())
-                .minStockLevel(material.getMinStockLevel())
                 .isActive(material.getIsActive())
                 .build();
     }
