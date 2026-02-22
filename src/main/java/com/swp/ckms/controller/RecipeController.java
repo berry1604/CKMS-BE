@@ -37,4 +37,17 @@ public class RecipeController {
                 .timestamp(LocalDateTime.now())
                 .build());
     }
+
+    @GetMapping("/product/{productId}/active")
+    @PreAuthorize("hasAnyAuthority('VIEW_RECIPE', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_COORDINATOR', 'ROLE_STAFF')")
+    public ResponseEntity<ApiResponse<RecipeResponse>> getActiveRecipe(@PathVariable Long productId) {
+        RecipeResponse response = recipeService.getActiveRecipeByProductId(productId);
+        
+        return ResponseEntity.ok(ApiResponse.<RecipeResponse>builder()
+                .status(HttpStatus.OK.value())
+                .message("Active recipe retrieved successfully")
+                .data(response)
+                .timestamp(LocalDateTime.now())
+                .build());
+    }
 }

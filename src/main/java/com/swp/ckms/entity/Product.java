@@ -1,5 +1,6 @@
 package com.swp.ckms.entity;
 
+import com.swp.ckms.enums.UnitType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -26,7 +27,6 @@ public class Product {
     @Column(nullable = false, unique = true)
     private String name;
 
-    @Lob
     @Column(columnDefinition = "TEXT")
     private String description;
 
@@ -36,6 +36,10 @@ public class Product {
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private UnitType unit;
 
     @Column(nullable = false)
     @Builder.Default

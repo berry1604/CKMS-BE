@@ -1,5 +1,6 @@
 package com.swp.ckms.dto.response;
 
+import com.swp.ckms.enums.UnitType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -10,6 +11,8 @@ import java.util.List;
 @Data
 @Builder
 public class ProductResponse {
+
+    private UnitType unit;
 
     private Long id;
     private String name;

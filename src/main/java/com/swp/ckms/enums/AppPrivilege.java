@@ -28,6 +28,12 @@ public enum AppPrivilege {
     UPDATE_MATERIAL("UPDATE_MATERIAL", "Can update materials"),
     DELETE_MATERIAL("DELETE_MATERIAL", "Can delete materials"),
     
+    // Product Management
+    CREATE_PRODUCT("CREATE_PRODUCT", "Can create new products"),
+    VIEW_PRODUCT("VIEW_PRODUCT", "Can view products"),
+    UPDATE_PRODUCT("UPDATE_PRODUCT", "Can update products"),
+    DELETE_PRODUCT("DELETE_PRODUCT", "Can delete products"),
+    
     // Other example privileges
     VIEW_DASHBOARD("VIEW_DASHBOARD", "Can view dashboard");
 

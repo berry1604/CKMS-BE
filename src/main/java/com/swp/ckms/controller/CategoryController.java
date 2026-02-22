@@ -34,11 +34,16 @@ public class CategoryController {
 
     @PostMapping
     @PreAuthorize("hasAnyAuthority('CREATE_CATEGORY', 'ROLE_MANAGER')") 
-    public ResponseEntity<ApiResponse<CategoryResponse>> createCategory(@Valid @RequestBody CategoryRequest request) {
+    public ResponseEntity<ApiResponse<CategoryResponse>> createCategory(
+            @Valid @RequestBody CategoryRequest request,
+            java.security.Principal principal) {
+            
+        String username = principal != null ? principal.getName() : null;
+        
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<CategoryResponse>builder()
                 .status(HttpStatus.CREATED.value())
                 .message("Category created successfully")
-                .data(categoryService.createCategory(request))
+                .data(categoryService.createCategory(request, username))
                 .timestamp(LocalDateTime.now())
                 .build());
     }

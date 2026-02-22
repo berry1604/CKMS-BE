@@ -27,6 +27,10 @@ public class Category {
 
     private String description;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_user_id")
+    private User createdByUser;
+
     @Column(nullable = false)
     @Builder.Default
     private Boolean isActive = true;

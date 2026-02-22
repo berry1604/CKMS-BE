@@ -9,5 +9,7 @@ public class CategoryResponse {
     private Long id;
     private String name;
     private String description;
+    private Long createdByUserId;
+    private String createdByUserName;
     private Boolean isActive;
 }

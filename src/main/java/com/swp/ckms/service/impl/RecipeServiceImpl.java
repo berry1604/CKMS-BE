@@ -57,7 +57,6 @@ public class RecipeServiceImpl implements RecipeService {
                 .version(1)
                 .isActive(true)
                 .yield(request.getYield())
-                .unit(request.getUnit())
                 .instructions(request.getInstructions())
                 .recipeDetails(new ArrayList<>())
                 .build();
@@ -84,6 +83,14 @@ public class RecipeServiceImpl implements RecipeService {
         return mapToResponse(recipe);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public RecipeResponse getActiveRecipeByProductId(Long productId) {
+        Recipe recipe = recipeRepository.findByProductIdAndIsActiveTrue(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Active recipe not found for product ID: " + productId));
+        return mapToResponse(recipe);
+    }
+
     private RecipeResponse mapToResponse(Recipe recipe) {
         List<RecipeDetailResponse> detailResponses = recipe.getRecipeDetails().stream()
                 .map(detail -> RecipeDetailResponse.builder()
@@ -107,7 +114,6 @@ public class RecipeServiceImpl implements RecipeService {
                 .version(recipe.getVersion())
                 .isActive(recipe.getIsActive())
                 .yield(recipe.getYield())
-                .unit(recipe.getUnit())
                 .instructions(recipe.getInstructions())
                 .recipeDetails(detailResponses)
                 .build();

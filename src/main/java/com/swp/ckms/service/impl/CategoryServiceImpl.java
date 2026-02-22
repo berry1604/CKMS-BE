@@ -3,9 +3,11 @@ package com.swp.ckms.service.impl;
 import com.swp.ckms.dto.request.CategoryRequest;
 import com.swp.ckms.dto.response.CategoryResponse;
 import com.swp.ckms.entity.Category;
+import com.swp.ckms.entity.User;
 import com.swp.ckms.exception.business.DuplicateNameException;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.repository.CategoryRepository;
+import com.swp.ckms.repository.UserRepository;
 import com.swp.ckms.service.CategoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,6 +21,7 @@ import java.util.stream.Collectors;
 public class CategoryServiceImpl implements CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final UserRepository userRepository;
 
     @Override
     public List<CategoryResponse> getAllCategories() {
@@ -30,14 +33,21 @@ public class CategoryServiceImpl implements CategoryService {
     @Override
     @Transactional
     @SuppressWarnings("null")
-    public CategoryResponse createCategory(CategoryRequest request) {
+    public CategoryResponse createCategory(CategoryRequest request, String username) {
         if (categoryRepository.existsByName(request.getName())) {
             throw new DuplicateNameException("Category with name '" + request.getName() + "' already exists");
+        }
+
+        User user = null;
+        if (username != null) {
+            user = userRepository.findByUsername(username)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         }
 
         Category category = Category.builder()
                 .name(request.getName())
                 .description(request.getDescription())
+                .createdByUser(user)
                 .isActive(true)
                 .build();
 
@@ -78,10 +88,15 @@ public class CategoryServiceImpl implements CategoryService {
 
     @SuppressWarnings("null")
     private CategoryResponse mapToResponse(Category category) {
+        Long createdByUserId = category.getCreatedByUser() != null ? category.getCreatedByUser().getUserId() : null;
+        String createdByUserName = category.getCreatedByUser() != null ? category.getCreatedByUser().getUsername() : null;
+
         return CategoryResponse.builder()
                 .id(category.getId())
                 .name(category.getName())
                 .description(category.getDescription())
+                .createdByUserId(createdByUserId)
+                .createdByUserName(createdByUserName)
                 .isActive(category.getIsActive())
                 .build();
     }

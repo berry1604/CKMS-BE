@@ -58,6 +58,7 @@ public class ProductServiceImpl implements ProductService {
                 .name(request.getName())
                 .description(request.getDescription())
                 .price(request.getPrice())
+                .unit(request.getUnit())
                 .category(category)
                 .isActive(true)
                 .build();
@@ -81,6 +82,7 @@ public class ProductServiceImpl implements ProductService {
         product.setName(request.getName());
         product.setDescription(request.getDescription());
         product.setPrice(request.getPrice());
+        product.setUnit(request.getUnit());
         product.setCategory(category);
         
         product = productRepository.save(product);
@@ -116,6 +118,7 @@ public class ProductServiceImpl implements ProductService {
                 .name(product.getName())
                 .description(product.getDescription())
                 .price(product.getPrice())
+                .unit(product.getUnit())
                 .categoryId(product.getCategory().getId())
                 .categoryName(product.getCategory().getName())
                 .isActive(product.getIsActive())

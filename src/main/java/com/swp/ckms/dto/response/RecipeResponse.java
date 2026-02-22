@@ -17,7 +17,6 @@ public class RecipeResponse {
     private Integer version;
     private Boolean isActive;
     private BigDecimal yield;
-    private String unit;
     private String instructions;
     private List<RecipeDetailResponse> recipeDetails;
 }

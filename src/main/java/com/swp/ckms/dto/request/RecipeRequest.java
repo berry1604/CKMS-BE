@@ -20,9 +20,6 @@ public class RecipeRequest {
     @Positive(message = "Yield must be greater than zero")
     private BigDecimal yield;
 
-    @NotBlank(message = "Unit is required")
-    private String unit;
-
     @NotBlank(message = "Instructions are required")
     private String instructions;
 
