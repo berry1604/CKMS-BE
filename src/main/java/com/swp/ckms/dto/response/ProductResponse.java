@@ -21,5 +21,5 @@ public class ProductResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     
-    private List<ProductMaterialResponse> materials;
+    // Recipe details will be handled by Recipe APIs
 }

@@ -7,12 +7,10 @@ import com.swp.ckms.dto.response.ProductResponse;
 import com.swp.ckms.entity.Category;
 import com.swp.ckms.entity.Material;
 import com.swp.ckms.entity.Product;
-import com.swp.ckms.entity.ProductMaterial;
 import com.swp.ckms.exception.business.DuplicateNameException;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.repository.CategoryRepository;
 import com.swp.ckms.repository.MaterialRepository;
-import com.swp.ckms.repository.ProductMaterialRepository;
 import com.swp.ckms.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -30,7 +28,6 @@ public class ProductService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
     private final MaterialRepository materialRepository;
-    private final ProductMaterialRepository productMaterialRepository;
 
     public Page<ProductResponse> getAllProducts(String search, Long categoryId, Pageable pageable) {
         Page<Product> products;
@@ -98,41 +95,6 @@ public class ProductService {
         productRepository.save(product);
     }
 
-    @Transactional
-    public void addMaterialToProduct(Long productId, AddMaterialRequest request) {
-        Product product = findProductById(productId);
-        
-        Material material = materialRepository.findById(request.getMaterialId())
-                .orElseThrow(() -> new ResourceNotFoundException("Material not found"));
-        
-        if (!material.getIsActive()) {
-             throw new IllegalArgumentException("Cannot add inactive material");
-        }
-        
-        if (productMaterialRepository.findByProductIdAndMaterialId(productId, request.getMaterialId()).isPresent()) {
-            throw new IllegalArgumentException("Material already added to this product");
-        }
-        
-        // Use default unit if not provided
-        String unit = request.getUnit() != null ? request.getUnit() : material.getUnit().name();
-        
-        ProductMaterial productMaterial = ProductMaterial.builder()
-                .product(product)
-                .material(material)
-                .quantity(request.getQuantity())
-                .unit(unit)
-                .build();
-        
-        productMaterialRepository.save(productMaterial);
-    }
-
-    @Transactional
-    public void removeMaterialFromProduct(Long productId, Long materialId) {
-        if (!productMaterialRepository.findByProductIdAndMaterialId(productId, materialId).isPresent()) {
-             throw new ResourceNotFoundException("Material not found in this product");
-        }
-        productMaterialRepository.deleteByProductIdAndMaterialId(productId, materialId);
-    }
 
     private Product findProductById(Long id) {
         return productRepository.findByIdAndIsActiveTrue(id)
@@ -149,12 +111,6 @@ public class ProductService {
     }
     
     private ProductResponse mapToResponse(Product product) {
-        List<ProductMaterial> materials = productMaterialRepository.findByProduct(product);
-        
-        List<ProductMaterialResponse> materialResponses = materials.stream()
-                .map(this::mapToMaterialResponse)
-                .collect(Collectors.toList());
-                
         return ProductResponse.builder()
                 .id(product.getId())
                 .name(product.getName())
@@ -165,16 +121,6 @@ public class ProductService {
                 .isActive(product.getIsActive())
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
-                .materials(materialResponses)
-                .build();
-    }
-    
-    private ProductMaterialResponse mapToMaterialResponse(ProductMaterial pm) {
-        return ProductMaterialResponse.builder()
-                .materialId(pm.getMaterial().getId())
-                .materialName(pm.getMaterial().getName())
-                .quantity(pm.getQuantity())
-                .unit(pm.getUnit())
                 .build();
     }
 }

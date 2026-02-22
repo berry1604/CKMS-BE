@@ -1,6 +1,5 @@
 package com.swp.ckms.controller;
 
-import com.swp.ckms.dto.request.AddMaterialRequest;
 import com.swp.ckms.dto.request.ProductRequest;
 import com.swp.ckms.dto.response.ApiResponse;
 import com.swp.ckms.dto.response.ProductResponse;
@@ -26,7 +25,7 @@ public class ProductController {
     private final ProductService productService;
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('VIEW_PRODUCT', 'MANAGER', 'STAFF', 'ADMIN')")
+    @PreAuthorize("hasAnyAuthority('VIEW_PRODUCT', 'ROLE_MANAGER', 'ROLE_STAFF', 'ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<Page<ProductResponse>>> getAllProducts(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Long categoryId,
@@ -41,7 +40,7 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('VIEW_PRODUCT', 'MANAGER', 'STAFF', 'ADMIN')")
+    @PreAuthorize("hasAnyAuthority('VIEW_PRODUCT', 'ROLE_MANAGER', 'ROLE_STAFF', 'ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> getProductById(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.<ProductResponse>builder()
                 .status(HttpStatus.OK.value())
@@ -52,7 +51,7 @@ public class ProductController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyAuthority('CREATE_PRODUCT', 'MANAGER')")
+    @PreAuthorize("hasAnyAuthority('CREATE_PRODUCT', 'ROLE_MANAGER')")
     public ResponseEntity<ApiResponse<ProductResponse>> createProduct(@Valid @RequestBody ProductRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<ProductResponse>builder()
                 .status(HttpStatus.CREATED.value())
@@ -63,7 +62,7 @@ public class ProductController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('UPDATE_PRODUCT', 'MANAGER')")
+    @PreAuthorize("hasAnyAuthority('UPDATE_PRODUCT', 'ROLE_MANAGER')")
     public ResponseEntity<ApiResponse<ProductResponse>> updateProduct(
             @PathVariable Long id,
             @Valid @RequestBody ProductRequest request) {
@@ -76,7 +75,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('DELETE_PRODUCT', 'MANAGER')")
+    @PreAuthorize("hasAnyAuthority('DELETE_PRODUCT', 'ROLE_MANAGER')")
     public ResponseEntity<ApiResponse<Void>> deleteProduct(@PathVariable Long id) {
         productService.deleteProduct(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
@@ -86,29 +85,4 @@ public class ProductController {
                 .build());
     }
 
-    @PostMapping("/{id}/materials")
-    @PreAuthorize("hasAnyAuthority('UPDATE_PRODUCT', 'MANAGER')")
-    public ResponseEntity<ApiResponse<Void>> addMaterialToProduct(
-            @PathVariable Long id,
-            @Valid @RequestBody AddMaterialRequest request) {
-        productService.addMaterialToProduct(id, request);
-        return ResponseEntity.ok(ApiResponse.<Void>builder()
-                .status(HttpStatus.OK.value())
-                .message("Material added to product successfully")
-                .timestamp(LocalDateTime.now())
-                .build());
-    }
-
-    @DeleteMapping("/{id}/materials/{materialId}")
-    @PreAuthorize("hasAnyAuthority('UPDATE_PRODUCT', 'MANAGER')")
-    public ResponseEntity<ApiResponse<Void>> removeMaterialFromProduct(
-            @PathVariable Long id,
-            @PathVariable Long materialId) {
-        productService.removeMaterialFromProduct(id, materialId);
-        return ResponseEntity.ok(ApiResponse.<Void>builder()
-                .status(HttpStatus.OK.value())
-                .message("Material removed from product successfully")
-                .timestamp(LocalDateTime.now())
-                .build());
-    }
 }
