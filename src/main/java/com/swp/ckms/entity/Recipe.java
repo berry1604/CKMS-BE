@@ -28,7 +28,18 @@ public class Recipe {
     @JoinColumn(name = "created_by_user_id")
     private User createdByUser;
 
-    private Integer version;
+    @Builder.Default
+    private Integer version = 1;
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean isActive = true;
+
+    @Column(precision = 10, scale = 2)
+    private java.math.BigDecimal yield;
+
+    @Column(length = 50)
+    private String unit;
 
     @Column(columnDefinition = "TEXT")
     private String instructions;

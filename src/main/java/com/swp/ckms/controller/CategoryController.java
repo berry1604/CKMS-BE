@@ -22,7 +22,7 @@ public class CategoryController {
     private final CategoryService categoryService;
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('VIEW_CATEGORY', 'MANAGER')")
+    @PreAuthorize("hasAnyAuthority('VIEW_CATEGORY', 'ROLE_MANAGER')")
     public ResponseEntity<ApiResponse<List<CategoryResponse>>> getAllCategories() {
         return ResponseEntity.ok(ApiResponse.<List<CategoryResponse>>builder()
                 .status(HttpStatus.OK.value())
@@ -33,7 +33,7 @@ public class CategoryController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyAuthority('CREATE_CATEGORY', 'MANAGER')") 
+    @PreAuthorize("hasAnyAuthority('CREATE_CATEGORY', 'ROLE_MANAGER')") 
     public ResponseEntity<ApiResponse<CategoryResponse>> createCategory(@Valid @RequestBody CategoryRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<CategoryResponse>builder()
                 .status(HttpStatus.CREATED.value())
@@ -44,7 +44,7 @@ public class CategoryController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('UPDATE_CATEGORY', 'MANAGER')")
+    @PreAuthorize("hasAnyAuthority('UPDATE_CATEGORY', 'ROLE_MANAGER')")
     public ResponseEntity<ApiResponse<CategoryResponse>> updateCategory(
             @PathVariable Long id,
             @Valid @RequestBody CategoryRequest request) {
@@ -57,7 +57,7 @@ public class CategoryController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('DELETE_CATEGORY', 'MANAGER')")
+    @PreAuthorize("hasAnyAuthority('DELETE_CATEGORY', 'ROLE_MANAGER')")
     public ResponseEntity<ApiResponse<Void>> deleteCategory(@PathVariable Long id) {
         categoryService.deleteCategory(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
