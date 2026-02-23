@@ -15,6 +15,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -75,19 +78,43 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         order.setTotalAmount(totalAmount);
 
         StoreOrder savedOrder = storeOrderRepository.save(order);
+        return mapToOrderResponse(savedOrder);
+    }
 
-        List<OrderDetailResponse> detailResponses = savedOrder.getOrderDetails().stream()
+    @Override
+    public Page<StoreOrderResponse> getMyOrders(String username, OrderStatus status, Pageable pageable) {
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
+
+        if (user.getStore() == null) {
+            throw new IllegalArgumentException("User does not belong to any store");
+        }
+
+        Long storeId = user.getStore().getStoreId();
+        Page<StoreOrder> orderPage;
+
+        if (status != null) {
+            orderPage = storeOrderRepository.findByStore_StoreIdAndStatus(storeId, status, pageable);
+        } else {
+            orderPage = storeOrderRepository.findByStore_StoreId(storeId, pageable);
+        }
+
+        return orderPage.map(this::mapToOrderResponse);
+    }
+
+    private StoreOrderResponse mapToOrderResponse(StoreOrder order) {
+        List<OrderDetailResponse> detailResponses = order.getOrderDetails().stream()
                 .map(this::mapToDetailResponse)
                 .collect(Collectors.toList());
 
         return StoreOrderResponse.builder()
-                .orderId(savedOrder.getOrderId())
-                .storeId(savedOrder.getStore().getStoreId())
-                .createdByUserId(savedOrder.getCreatedByUser().getUserId())
-                .orderDate(savedOrder.getOrderDate())
-                .status(savedOrder.getStatus().name())
-                .batchId(savedOrder.getBatchId())
-                .totalAmount(savedOrder.getTotalAmount())
+                .orderId(order.getOrderId())
+                .storeId(order.getStore().getStoreId())
+                .createdByUserId(order.getCreatedByUser().getUserId())
+                .orderDate(order.getOrderDate())
+                .status(order.getStatus().name())
+                .batchId(order.getBatchId())
+                .totalAmount(order.getTotalAmount())
                 .orderDetails(detailResponses)
                 .build();
     }
