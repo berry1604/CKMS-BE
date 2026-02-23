@@ -52,8 +52,11 @@ public class StoreOrder {
 
     private BigDecimal totalAmount;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status; // DRAFT, SUBMITTED, APPROVED, PROCESSING, SHIPPED, COMPLETED, CANCELLED
+    private OrderStatus status; // SUBMITTED, REJECTED, GROUPED, CONFIRMED, PREPARING, READY, COMPLETED
+
+    private Long batchId; // used to group orders by coordinator
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderDetail> orderDetails;

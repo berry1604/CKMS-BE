@@ -34,6 +34,11 @@ public enum AppPrivilege {
     UPDATE_PRODUCT("UPDATE_PRODUCT", "Can update products"),
     DELETE_PRODUCT("DELETE_PRODUCT", "Can delete products"),
     
+    // Store Order Management
+    CREATE_STORE_ORDER("CREATE_STORE_ORDER", "Can create new store orders"),
+    VIEW_STORE_ORDER("VIEW_STORE_ORDER", "Can view store orders"),
+    UPDATE_STORE_ORDER("UPDATE_STORE_ORDER", "Can update store orders"),
+    
     // Other example privileges
     VIEW_DASHBOARD("VIEW_DASHBOARD", "Can view dashboard");
 
