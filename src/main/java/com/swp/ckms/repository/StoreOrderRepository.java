@@ -13,6 +13,7 @@ import java.util.List;
 @Repository
 public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long> {
     List<StoreOrder> findByStatus(OrderStatus status);
+    Page<StoreOrder> findByStatus(OrderStatus status, Pageable pageable);
     List<StoreOrder> findByBatchId(Long batchId);
     List<StoreOrder> findByStore_StoreId(Long storeId);
     Page<StoreOrder> findByStore_StoreId(Long storeId, Pageable pageable);

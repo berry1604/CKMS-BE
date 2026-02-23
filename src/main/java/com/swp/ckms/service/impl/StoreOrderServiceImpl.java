@@ -102,6 +102,12 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         return orderPage.map(this::mapToOrderResponse);
     }
 
+    @Override
+    public Page<StoreOrderResponse> getAllOrdersByStatus(OrderStatus status, Pageable pageable) {
+        Page<StoreOrder> orderPage = storeOrderRepository.findByStatus(status, pageable);
+        return orderPage.map(this::mapToOrderResponse);
+    }
+
     private StoreOrderResponse mapToOrderResponse(StoreOrder order) {
         List<OrderDetailResponse> detailResponses = order.getOrderDetails().stream()
                 .map(this::mapToDetailResponse)

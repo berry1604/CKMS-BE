@@ -66,27 +66,37 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedUsersAndRoles(Set<Privilege> allPrivileges) {
-        // 1. Seed ADMIN Role & User
-        Role adminRole = seedRole("ADMIN", allPrivileges);
+        // 1. Seed ADMIN Role & User (Restricted to USER/ROLE management)
+        Set<Privilege> adminPrivileges = allPrivileges.stream()
+                .filter(p -> p.getCode().contains("USER") || p.getCode().contains("ROLE") || p.getCode().equals("VIEW_DASHBOARD"))
+                .collect(Collectors.toSet());
+        Role adminRole = seedRole("ADMIN", adminPrivileges);
         seedUser("admin", "admin@ckms.com", "admin", "System Administrator", adminRole, null);
 
-        // 2. Seed MANAGER Role & User
+        // 2. Seed COORDINATOR Role & User [NEW]
+        Set<Privilege> coordinatorPrivileges = allPrivileges.stream()
+                .filter(p -> p.getCode().equals("VIEW_STORE_ORDER") || p.getCode().equals("UPDATE_STORE_ORDER"))
+                .collect(Collectors.toSet());
+        Role coordinatorRole = seedRole("COORDINATOR", coordinatorPrivileges);
+        seedUser("coordinator", "coordinator@ckms.com", "coordinator", "Order Coordinator", coordinatorRole, null);
+
+        // 3. Seed MANAGER Role & User (Keep as is or adjust if needed)
         Set<Privilege> managerPrivileges = allPrivileges.stream()
-                .filter(p -> p.getCode().contains("CATEGORY") || p.getCode().contains("MATERIAL"))
+                .filter(p -> p.getCode().contains("CATEGORY") || p.getCode().contains("MATERIAL") || p.getCode().contains("PRODUCT"))
                 .collect(Collectors.toSet());
         Role managerRole = seedRole("MANAGER", managerPrivileges);
         seedUser("manager", "manager@ckms.com", "manager", "Store Manager", managerRole, null);
 
-        // 3. Seed STAFF Role & User (View only)
+        // 4. Seed STAFF Role & User (View only)
         Set<Privilege> staffPrivileges = allPrivileges.stream()
-                .filter(p -> p.getCode().startsWith("VIEW_"))
+                .filter(p -> p.getCode().startsWith("VIEW_") && !p.getCode().equals("VIEW_STORE_ORDER"))
                 .collect(Collectors.toSet());
         Role staffRole = seedRole("STAFF", staffPrivileges);
         seedUser("staff", "staff@ckms.com", "staff", "Kitchen Staff", staffRole, null);
 
-        // 4. Seed STORE_STAFF Role & User
+        // 5. Seed STORE_STAFF Role & User
         Set<Privilege> storeStaffPrivileges = allPrivileges.stream()
-                .filter(p -> p.getCode().equals("CREATE_STORE_ORDER") || p.getCode().equals("VIEW_STORE_ORDER") || p.getCode().startsWith("VIEW_"))
+                .filter(p -> p.getCode().equals("CREATE_STORE_ORDER") || p.getCode().equals("VIEW_STORE_ORDER"))
                 .collect(Collectors.toSet());
         Role storeStaffRole = seedRole("STORE_STAFF", storeStaffPrivileges);
 
