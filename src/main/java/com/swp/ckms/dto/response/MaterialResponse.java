@@ -10,6 +10,5 @@ public class MaterialResponse {
     private Long id;
     private String name;
     private UnitType unit;
-    private Integer minStockLevel;
     private Boolean isActive;
 }

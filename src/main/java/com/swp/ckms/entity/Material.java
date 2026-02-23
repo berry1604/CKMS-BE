@@ -32,10 +32,6 @@ public class Material {
 
     @Column(nullable = false)
     @Builder.Default
-    private Integer minStockLevel = 0;
-
-    @Column(nullable = false)
-    @Builder.Default
     private Boolean isActive = true;
 
     @CreationTimestamp
