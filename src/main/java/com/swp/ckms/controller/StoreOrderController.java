@@ -46,4 +46,22 @@ public class StoreOrderController {
         Page<StoreOrderResponse> response = storeOrderService.getMyOrders(authentication.getName(), status, pageable);
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping
+    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER')")
+    public ResponseEntity<Page<StoreOrderResponse>> getAllOrders(
+            @RequestParam(defaultValue = "SUBMITTED") OrderStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "orderDate") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir) {
+        
+        org.springframework.data.domain.Sort sort = sortDir.equalsIgnoreCase("desc") 
+                ? org.springframework.data.domain.Sort.by(sortBy).descending() 
+                : org.springframework.data.domain.Sort.by(sortBy).ascending();
+        Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size, sort);
+        
+        Page<StoreOrderResponse> response = storeOrderService.getAllOrdersByStatus(status, pageable);
+        return ResponseEntity.ok(response);
+    }
 }

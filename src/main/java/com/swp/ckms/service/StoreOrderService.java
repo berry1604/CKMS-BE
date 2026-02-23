@@ -10,4 +10,5 @@ import org.springframework.data.domain.Pageable;
 public interface StoreOrderService {
     StoreOrderResponse createOrder(StoreOrderRequest request, String username);
     Page<StoreOrderResponse> getMyOrders(String username, OrderStatus status, Pageable pageable);
+    Page<StoreOrderResponse> getAllOrdersByStatus(OrderStatus status, Pageable pageable);
 }
