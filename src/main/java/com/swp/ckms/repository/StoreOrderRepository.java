@@ -1,6 +1,6 @@
 package com.swp.ckms.repository;
 
-import com.swp.ckms.entity.OrderStatus;
+import com.swp.ckms.enums.OrderStatus;
 import com.swp.ckms.entity.StoreOrder;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
