@@ -1,5 +1,6 @@
 package com.swp.ckms.entity;
 
+import com.swp.ckms.enums.OrderStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;

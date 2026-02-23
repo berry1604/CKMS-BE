@@ -1,4 +1,4 @@
-package com.swp.ckms.entity;
+package com.swp.ckms.enums;
 
 public enum OrderStatus {
     SUBMITTED,
