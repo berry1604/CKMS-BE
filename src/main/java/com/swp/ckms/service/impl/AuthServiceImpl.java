@@ -58,7 +58,7 @@ public class AuthServiceImpl implements AuthService {
         User user = userRepository.findByUsername(userDetails.getUsername())
                 .orElseThrow(() -> new UsernameNotFoundException("User not found"));
 
-        String jwt = tokenProvider.generateToken(user.getUsername(), user.getUserId(), user.getRole().getRoleName());
+        String jwt = buildAccessToken(user);
 
         // Create Refresh Token
         RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getUserId());
@@ -85,7 +85,7 @@ public class AuthServiceImpl implements AuthService {
         refreshTokenService.verifyExpiration(token);
 
         User user = token.getUser();
-        String accessToken = tokenProvider.generateToken(user.getUsername(), user.getUserId(), user.getRole().getRoleName());
+        String accessToken = buildAccessToken(user);
 
         return LoginResponse.builder()
                 .accessToken(accessToken)
@@ -95,4 +95,31 @@ public class AuthServiceImpl implements AuthService {
                 .userId(user.getUserId())
                 .build();
     }
+
+    private String buildAccessToken(User user) {
+        Long storeId = user.getStore() != null ? user.getStore().getStoreId() : null;
+        Long coordinatorId = user.getKitchen() != null ? user.getKitchen().getKitchenId() : null;
+        String scope = resolveScope(user.getRole().getRoleName());
+
+        return tokenProvider.generateToken(
+                user.getUsername(),
+                user.getUserId(),
+                user.getRole().getRoleName(),
+                storeId,
+                coordinatorId,
+                scope
+        );
+    }
+
+    private String resolveScope(String roleName) {
+        if (roleName == null) return "USER";
+        return switch (roleName.toUpperCase()) {
+            case "ADMIN" -> "SYSTEM";
+            case "MANAGER" ->"SYSTEM";
+            case "STORE_OWNER", "STAFF" -> "STORE";
+            case "COORDINATOR"-> "KITCHEN";
+            default -> "USER";
+        };
+    }
 }
+
