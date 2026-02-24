@@ -8,7 +8,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -33,9 +32,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String username = tokenProvider.getUsernameFromToken(token);
 
             UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+            
+            // Populate UserContext from claims
+            UserContext userContext = UserContext.builder()
+                    .userId(tokenProvider.getUserIdFromToken(token))
+                    .username(username)
+                    .storeId(tokenProvider.getStoreIdFromToken(token))
+                    .coordinatorId(tokenProvider.getCoordinatorIdFromToken(token))
+                    .scope(tokenProvider.getScopeFromToken(token))
+                    .build();
+
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-            authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+            
+            // Using setDetails to store our UserContext object
+            authentication.setDetails(userContext);
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }

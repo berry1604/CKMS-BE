@@ -15,8 +15,12 @@ import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.ProductRepository;
 import com.swp.ckms.repository.StoreOrderRepository;
 import com.swp.ckms.repository.UserRepository;
+import com.swp.ckms.repository.specification.StoreOrderSpecification;
+import com.swp.ckms.security.SecurityUtils;
+import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.StoreOrderService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -88,6 +92,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
     @Override
     public Page<StoreOrderResponse> getMyOrders(String username, OrderStatus status, Pageable pageable) {
+        // Keep this for now for backward compatibility or direct use
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
 
@@ -108,8 +113,25 @@ public class StoreOrderServiceImpl implements StoreOrderService {
     }
 
     @Override
-    public Page<StoreOrderResponse> getAllOrdersByStatus(OrderStatus status, Pageable pageable) {
-        Page<StoreOrder> orderPage = storeOrderRepository.findByStatus(status, pageable);
+    public Page<StoreOrderResponse> getAllOrders(OrderStatus status, Pageable pageable) {
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null) {
+            throw new org.springframework.security.access.AccessDeniedException("User context not found or not authenticated");
+        }
+
+        Specification<StoreOrder> spec = Specification.where(StoreOrderSpecification.hasStatus(status));
+
+        // Auto-filter based on scope
+        if ("STORE".equalsIgnoreCase(ctx.getScope())) {
+            spec = spec.and(StoreOrderSpecification.hasStoreId(ctx.getStoreId()));
+        } else if (!"SYSTEM".equalsIgnoreCase(ctx.getScope())) {
+             // If not SYSTEM and not STORE, we might want to restrict by default or throw error
+             // For now, if someone somehow gets here without either scope, we deny
+             throw new org.springframework.security.access.AccessDeniedException("Invalid user scope: " + ctx.getScope());
+        }
+        // If SYSTEM scope, we don't add store filter, showing all orders
+
+        Page<StoreOrder> orderPage = storeOrderRepository.findAll(spec, pageable);
         return orderPage.map(this::mapToOrderResponse);
     }
 
