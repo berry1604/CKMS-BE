@@ -22,28 +22,57 @@ public class JwtTokenProvider {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateToken(String username, Long userId, String role) {
+    public String generateToken(String username, Long userId, String role,
+                                Long storeId, Long coordinatorId, String scope) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtExpiration);
 
-        return Jwts.builder()
+        JwtBuilder builder = Jwts.builder()
                 .subject(username)
                 .claim("userId", userId)
                 .claim("roles", new String[]{role})
+                .claim("scope", scope);
+
+        if (storeId != null) {
+            builder.claim("storeId", storeId);
+        }
+        if (coordinatorId != null) {
+            builder.claim("coordinatorId", coordinatorId);
+        }
+
+        return builder
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(getSigningKey())
                 .compact();
     }
 
-    public String getUsernameFromToken(String token) {
-        Claims claims = Jwts.parser()
+    public Claims getClaimsFromToken(String token) {
+        return Jwts.parser()
                 .verifyWith(getSigningKey())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
 
-        return claims.getSubject();
+    public String getUsernameFromToken(String token) {
+        return getClaimsFromToken(token).getSubject();
+    }
+
+    public Long getUserIdFromToken(String token) {
+        return getClaimsFromToken(token).get("userId", Long.class);
+    }
+
+    public Long getStoreIdFromToken(String token) {
+        return getClaimsFromToken(token).get("storeId", Long.class);
+    }
+
+    public Long getCoordinatorIdFromToken(String token) {
+        return getClaimsFromToken(token).get("coordinatorId", Long.class);
+    }
+
+    public String getScopeFromToken(String token) {
+        return getClaimsFromToken(token).get("scope", String.class);
     }
 
     public boolean validateToken(String token) {
