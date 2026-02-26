@@ -59,6 +59,11 @@ public class StoreOrder {
 
     private Long batchId; // used to group orders by coordinator
 
+    private LocalDateTime approvedAt;
+
+    @Version
+    private Long version;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderDetail> orderDetails;
 }
