@@ -67,4 +67,25 @@ public class StoreOrderController {
         Page<StoreOrderResponse> response = storeOrderService.getAllOrders(status, pageable);
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER')")
+    public ResponseEntity<StoreOrderResponse> getOrderById(@PathVariable Long id) {
+        StoreOrderResponse response = storeOrderService.getOrderById(id);
+        return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/{id}/status")
+    @PreAuthorize("hasAnyAuthority('UPDATE_STORE_ORDER', 'ORDER_APPROVE')")
+    public ResponseEntity<StoreOrderResponse> updateOrderStatus(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, String> body) {
+        String statusStr = body.get("status");
+        if (statusStr == null) {
+            throw new IllegalArgumentException("Status is required");
+        }
+        OrderStatus status = OrderStatus.valueOf(statusStr.toUpperCase());
+        StoreOrderResponse response = storeOrderService.updateOrderStatus(id, status);
+        return ResponseEntity.ok(response);
+    }
 }

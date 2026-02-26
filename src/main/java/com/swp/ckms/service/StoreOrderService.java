@@ -11,4 +11,6 @@ public interface StoreOrderService {
     StoreOrderResponse createOrder(StoreOrderRequest request, String username);
     Page<StoreOrderResponse> getMyOrders(String username, OrderStatus status, Pageable pageable);
     Page<StoreOrderResponse> getAllOrders(OrderStatus status, Pageable pageable);
+    StoreOrderResponse getOrderById(Long id);
+    StoreOrderResponse updateOrderStatus(Long id, OrderStatus status);
 }

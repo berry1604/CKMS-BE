@@ -12,6 +12,7 @@ import com.swp.ckms.entity.User;
 import com.swp.ckms.enums.OrderStatus;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.repository.FranchiseStoreRepository;
+import com.swp.ckms.repository.InvoiceRepository;
 import com.swp.ckms.repository.ProductRepository;
 import com.swp.ckms.repository.StoreOrderRepository;
 import com.swp.ckms.repository.UserRepository;
@@ -42,6 +43,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
     private final UserRepository userRepository;
     private final FranchiseStoreRepository franchiseStoreRepository;
     private final ProductRepository productRepository;
+    private final InvoiceRepository invoiceRepository;
 
     @Override
     public StoreOrderResponse createOrder(StoreOrderRequest request, String username) {
@@ -133,6 +135,80 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
         Page<StoreOrder> orderPage = storeOrderRepository.findAll(spec, pageable);
         return orderPage.map(this::mapToOrderResponse);
+    }
+
+    @Override
+    public StoreOrderResponse getOrderById(Long id) {
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null) {
+            throw new org.springframework.security.access.AccessDeniedException("User context not found");
+        }
+
+        StoreOrder order = storeOrderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with ID: " + id));
+
+        // Ownership check for STORE scope
+        if ("STORE".equalsIgnoreCase(ctx.getScope())) {
+            if (!order.getStore().getStoreId().equals(ctx.getStoreId())) {
+                throw new org.springframework.security.access.AccessDeniedException("Access denied to this order");
+            }
+        }
+
+        return mapToOrderResponse(order);
+    }
+
+    @Override
+    @Transactional
+    public StoreOrderResponse updateOrderStatus(Long id, OrderStatus newStatus) {
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null) {
+            throw new org.springframework.security.access.AccessDeniedException("User context not found");
+        }
+
+        // Only SYSTEM scope can approve/reject
+        if (!"SYSTEM".equalsIgnoreCase(ctx.getScope())) {
+            throw new org.springframework.security.access.AccessDeniedException("Only coordinators can update order status");
+        }
+
+        StoreOrder order = storeOrderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with ID: " + id));
+
+        // State machine guard: Only SUBMITTED orders can be processed
+        if (order.getStatus() != OrderStatus.SUBMITTED) {
+            throw new IllegalArgumentException("Order is already processed or in an invalid state for update: " + order.getStatus());
+        }
+
+        if (newStatus == OrderStatus.CONFIRMED) {
+            // Anti-double-invoice check
+            if (invoiceRepository.existsByOrder_OrderId(id)) {
+                throw new IllegalStateException("Invoice already exists for this order");
+            }
+
+            User approvedBy = userRepository.findById(ctx.getUserId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Approver not found"));
+
+            order.setStatus(OrderStatus.CONFIRMED);
+            order.setApprovedByUser(approvedBy);
+            order.setApprovedAt(LocalDateTime.now());
+
+            // Create Invoice
+            com.swp.ckms.entity.Invoice invoice = com.swp.ckms.entity.Invoice.builder()
+                    .order(order)
+                    .amount(order.getTotalAmount())
+                    .issuedAt(LocalDateTime.now())
+                    .status("UNPAID")
+                    .build();
+            
+            invoiceRepository.save(invoice);
+            order.setInvoice(invoice); // Link back
+
+        } else if (newStatus == OrderStatus.REJECTED) {
+            order.setStatus(OrderStatus.REJECTED);
+        } else {
+            throw new IllegalArgumentException("Invalid target status for approval flow: " + newStatus);
+        }
+
+        return mapToOrderResponse(storeOrderRepository.save(order));
     }
 
     private StoreOrderResponse mapToOrderResponse(StoreOrder order) {
