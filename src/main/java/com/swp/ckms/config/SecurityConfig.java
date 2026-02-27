@@ -50,8 +50,7 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/reset-password", "/api/v1/auth/refresh"
-                                        , "/api/v1/auth/login", "/api/v1/auth/forgot-password"
+                        .requestMatchers("/api/v1/auth/**"
                                         , "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .anyRequest().authenticated()
                 )

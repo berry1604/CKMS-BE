@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -34,7 +33,6 @@ public class AuthController {
     }
 
     @PostMapping("/activate")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN', 'ROLE_MANAGER')")
     public ResponseEntity<String> activateAccount(@RequestBody ActivateAccountRequest request) {
         userService.activateAccount(request);
         return ResponseEntity.ok("Account activated successfully");
