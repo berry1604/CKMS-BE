@@ -27,7 +27,7 @@ public class RoleController {
 
     @GetMapping
     @Operation(summary = "Get all roles", description = "Retrieve a list of all roles with their privileges")
-    // @PreAuthorize("hasAuthority('MANAGE_ROLES')")
+    @PreAuthorize("hasAuthority('VIEW_ROLE') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<List<RoleResponse>>> getAllRoles() {
         List<RoleResponse> roles = roleService.getAllRoles();
         return ResponseEntity.ok(ApiResponse.success("Roles retrieved successfully", roles));
@@ -35,7 +35,7 @@ public class RoleController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Get role by ID", description = "Retrieve a specific role with its privileges")
-    // @PreAuthorize("hasAuthority('MANAGE_ROLES')")
+    @PreAuthorize("hasAuthority('VIEW_ROLE') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<RoleResponse>> getRoleById(@PathVariable Long id) {
         RoleResponse role = roleService.getRoleById(id);
         return ResponseEntity.ok(ApiResponse.success("Role retrieved successfully", role));
@@ -43,7 +43,7 @@ public class RoleController {
 
     @PostMapping
     @Operation(summary = "Create a new role", description = "Create a new role and assign privileges to it")
-    // @PreAuthorize("hasAuthority('MANAGE_ROLES')")
+    @PreAuthorize("hasAuthority('CREATE_ROLE') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<RoleResponse>> createRole(
             @Valid @RequestBody CreateRoleRequest request) {
         RoleResponse role = roleService.createRole(request);
@@ -53,7 +53,7 @@ public class RoleController {
 
     @PutMapping("/{id}")
     @Operation(summary = "Update a role", description = "Update an existing role's name and/or privileges")
-    // @PreAuthorize("hasAuthority('MANAGE_ROLES')")
+    @PreAuthorize("hasAuthority('UPDATE_ROLE') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<RoleResponse>> updateRole(
             @PathVariable Long id,
             @Valid @RequestBody UpdateRoleRequest request) {
@@ -63,7 +63,7 @@ public class RoleController {
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete a role", description = "Delete an existing role by its ID")
-    // @PreAuthorize("hasAuthority('MANAGE_ROLES')")
+    @PreAuthorize("hasAuthority('DELETE_ROLE') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteRole(@PathVariable Long id) {
         roleService.deleteRole(id);
         return ResponseEntity.ok(ApiResponse.success("Role deleted successfully", null));
@@ -71,7 +71,7 @@ public class RoleController {
 
     @PostMapping("/{roleId}/privileges")
     @Operation(summary = "Assign privileges to a role", description = "Add privileges to an existing role")
-    // @PreAuthorize("hasAuthority('MANAGE_ROLES')")
+    @PreAuthorize("hasAuthority('UPDATE_ROLE') or hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<RoleResponse>> assignPrivileges(
             @PathVariable Long roleId,
             @RequestBody Set<Long> privilegeIds) {
@@ -81,7 +81,7 @@ public class RoleController {
 
     @DeleteMapping("/{roleId}/privileges")
     @Operation(summary = "Remove privileges from a role", description = "Remove privileges from an existing role")
-    // @PreAuthorize("hasAuthority('MANAGE_ROLES')")
+    @PreAuthorize("hasAnyAuthority('UPDATE_ROLE', 'DELETE_ROLE', 'ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<RoleResponse>> removePrivileges(
             @PathVariable Long roleId,
             @RequestBody Set<Long> privilegeIds) {
