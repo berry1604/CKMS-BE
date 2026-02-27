@@ -4,9 +4,10 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
 
 ---
 
-## Giai đoạn 1: Thiết lập Danh mục & Công thức (Admin)
+## Giai đoạn 1: Thiết lập Danh mục & Công thức (Manager)
 
 ### 1.1 Tạo Danh mục & Nguyên liệu
+- **Actor**: `Manager` (Có quyền `MANAGE_CATALOG`, `CREATE_CATEGORY`, `CREATE_MATERIAL`)
 - **Tạo Danh mục "Thịt Sơ Chế"**:
   - `POST /api/v1/categories` -> `{"name": "Thịt Sơ Chế"}` (Lấy `categoryId: 5`)
 - **Tạo các Nguyên liệu thô**:
@@ -14,6 +15,7 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
   - `POST /api/v1/materials` -> `{"name": "Gia vị Beefsteak", "unit": "GOI"}` (Lấy `matId: 11`)
 
 ### 1.2 Tạo Bán thành phẩm & Công thức
+- **Actor**: `Manager` (Có quyền `CREATE_PRODUCT`, `CREATE_RECIPE`)
 - **Tạo Sản phẩm "Bò Beefsteak Sơ chế"**:
   - `POST /api/v1/products`
   - Body: `{"name": "Bò Beefsteak Sơ chế", "categoryId": 5, "price": 150000, "unit": "PHAN"}` (Lấy `productId: 20`)
@@ -33,9 +35,10 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
 
 ---
 
-## Giai đoạn 2: Quản lý Kho & Đặt hàng (Manager)
+## Giai đoạn 2: Quản lý Kho & Đặt hàng (Coordinator & Store Staff)
 
 ### 2.1 Nhập kho nguyên liệu tại Bếp
+- **Actor**: `Manager` hoặc `Coordinator` (Có quyền `VIEW_KITCHEN_INVENTORY`)
 - **Nhập 50kg thịt và 200 gói gia vị**:
   - `POST /api/v1/kitchen-inventory/{warehouseId}/import/materials`
   - Body: 
@@ -47,7 +50,8 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
     ```
 
 ### 2.2 Cửa hàng đặt hàng
-- **Manager đặt 40 phần Bò Beefsteak Sơ chế**:
+- **Actor**: `Store Staff` (Có quyền `CREATE_STORE_ORDER`)
+- **Đặt 40 phần Bò Beefsteak Sơ chế**:
   - `POST /api/v1/orders`
   - Body:
     ```json
@@ -68,6 +72,7 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
   - **Hệ thống**: Tự động tạo Invoice số tiền `40 phần * 150.000 = 6.000.000 VNĐ`.
 
 ### 3.2 Lập kế hoạch sản xuất
+- **Actor**: `Coordinator` (Có quyền `CREATE_PRODUCTION_PLAN`)
 - **Tạo kế hoạch cho Đơn hàng #100**:
   - `POST /api/v1/production-plans` -> `{"storeOrderIds": [100]}` (Lấy `planId: 50`)
 - **Chuyển sang Sẵn sàng (Ready)**:
@@ -75,6 +80,7 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
   - **Hệ thống**: Kiểm tra kho bếp: Cần `40 * 0.25 = 10kg` thịt bò. Hiện có 50kg -> **OK**.
 
 ### 3.3 Thực thi sản xuất
+- **Actor**: `Kitchen Staff` (Có quyền `EXECUTE_PRODUCTION`, `UPDATE_PRODUCTION_PLAN`)
 - **Bắt đầu**: `POST /api/v1/production-plans/50/start`.
 - **Hoàn thành**: `POST /api/v1/production-plans/50/finish`.
   - **Tác động kho**: 
@@ -84,9 +90,10 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
 
 ---
 
-## Giai đoạn 4: Thanh toán (Admin)
+## Giai đoạn 4: Thanh toán (Manager / Admin)
 
 ### 4.1 Tạo Bảng kê & Tất toán
+- **Actor**: `Manager` hoặc `Admin` (Có quyền `VIEW_BILLING`)
 - **Gom hóa đơn vào bảng kê**: `POST /api/v1/billing-statements/generate`.
 - **Xác nhận thanh toán**: `PATCH /api/v1/billing-statements/{id}/pay`.
   - **Kết quả cuối cùng**: Luồng đi từ nguyên liệu sống -> bán thành phẩm tẩm ướp -> xuất hóa đơn -> thu tiền hoàn tất.

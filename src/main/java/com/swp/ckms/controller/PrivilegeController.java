@@ -26,7 +26,7 @@ public class PrivilegeController {
 
     @GetMapping
     @Operation(summary = "Get all privileges", description = "Retrieve a list of all privileges")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('VIEW_ROLE')")
     public ResponseEntity<ApiResponse<List<PrivilegeResponse>>> getAllPrivileges() {
         List<PrivilegeResponse> privileges = privilegeService.getAllPrivileges();
         return ResponseEntity.ok(ApiResponse.success("Privileges retrieved successfully", privileges));
@@ -34,7 +34,7 @@ public class PrivilegeController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Get privilege by ID", description = "Retrieve a specific privilege by its ID")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('VIEW_ROLE')")
     public ResponseEntity<ApiResponse<PrivilegeResponse>> getPrivilegeById(@PathVariable Long id) {
         PrivilegeResponse privilege = privilegeService.getPrivilegeById(id);
         return ResponseEntity.ok(ApiResponse.success("Privilege retrieved successfully", privilege));
@@ -42,7 +42,7 @@ public class PrivilegeController {
 
     @PostMapping
     @Operation(summary = "Create a new privilege", description = "Create a new privilege with a unique code")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('VIEW_ROLE')")
     public ResponseEntity<ApiResponse<PrivilegeResponse>> createPrivilege(
             @Valid @RequestBody CreatePrivilegeRequest request) {
         PrivilegeResponse privilege = privilegeService.createPrivilege(request);
@@ -52,7 +52,7 @@ public class PrivilegeController {
 
     @PutMapping("/{id}")
     @Operation(summary = "Update a privilege", description = "Update an existing privilege")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('VIEW_ROLE')")
     public ResponseEntity<ApiResponse<PrivilegeResponse>> updatePrivilege(
             @PathVariable Long id,
             @Valid @RequestBody UpdatePrivilegeRequest request) {
@@ -62,7 +62,7 @@ public class PrivilegeController {
 
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete a privilege", description = "Delete an existing privilege by its ID")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('UPDATE_ROLE')")
     public ResponseEntity<ApiResponse<Void>> deletePrivilege(@PathVariable Long id) {
         privilegeService.deletePrivilege(id);
         return ResponseEntity.ok(ApiResponse.success("Privilege deleted successfully", null));
