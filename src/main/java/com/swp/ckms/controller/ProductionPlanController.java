@@ -42,4 +42,13 @@ public class ProductionPlanController {
         ProductionPlanResponse response = productionPlanService.startProductionPlan(id, version);
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/{id}/finish")
+    @PreAuthorize("hasRole('COORDINATOR') or hasRole('ADMIN')")
+    public ResponseEntity<ProductionPlanResponse> finishProductionPlan(
+            @PathVariable Long id,
+            @RequestHeader(value = "If-Match", required = false) Long version) {
+        ProductionPlanResponse response = productionPlanService.finishProductionPlan(id, version);
+        return ResponseEntity.ok(response);
+    }
 }

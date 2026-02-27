@@ -41,4 +41,8 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
         GROUP BY rd.material
     """)
     List<MaterialRequirementProjection> getMaterialRequirementsForPlan(@Param("planId") Long planId);
+
+    @Modifying
+    @Query("UPDATE StoreOrder o SET o.status = com.swp.ckms.enums.OrderStatus.READY WHERE o.productionPlan.planId = :planId AND o.status = com.swp.ckms.enums.OrderStatus.GROUPED")
+    int updateOrderStatusToReadyByPlanId(@Param("planId") Long planId);
 }
