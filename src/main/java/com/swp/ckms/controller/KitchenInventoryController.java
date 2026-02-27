@@ -22,7 +22,7 @@ public class KitchenInventoryController {
     private final KitchenInventoryService inventoryService;
 
     @GetMapping("/{warehouseId}/stock")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<List<KitchenStockItemResponse>>> getWarehouseStock(@PathVariable Long warehouseId) {
         return ResponseEntity.ok(ApiResponse.<List<KitchenStockItemResponse>>builder()
                 .status(HttpStatus.OK.value())
@@ -33,7 +33,7 @@ public class KitchenInventoryController {
     }
 
     @PostMapping("/{warehouseId}/import/materials")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<List<KitchenStockItemResponse>>> importMaterials(
             @PathVariable Long warehouseId,
             @RequestBody @Valid List<KitchenStockImportRequest> requests) {
@@ -47,7 +47,7 @@ public class KitchenInventoryController {
     }
 
     @PostMapping("/{warehouseId}/import/products")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<List<KitchenStockItemResponse>>> importProducts(
             @PathVariable Long warehouseId,
             @RequestBody @Valid List<KitchenStockImportRequest> requests) {
