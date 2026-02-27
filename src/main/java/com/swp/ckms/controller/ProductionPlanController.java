@@ -26,4 +26,11 @@ public class ProductionPlanController {
         ProductionPlanResponse response = productionPlanService.createProductionPlan(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
+
+    @PutMapping("/{id}/ready")
+    @PreAuthorize("hasRole('COORDINATOR') or hasRole('ADMIN')")
+    public ResponseEntity<ProductionPlanResponse> readyProductionPlan(@PathVariable Long id) {
+        ProductionPlanResponse response = productionPlanService.checkAndReadyPlan(id);
+        return ResponseEntity.ok(response);
+    }
 }
