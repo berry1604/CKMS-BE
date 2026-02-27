@@ -36,4 +36,17 @@ public interface KitchenStockItemRepository extends JpaRepository<KitchenStockIt
     List<com.swp.ckms.repository.projection.MaterialStockProjection> getAvailableStockForMaterials(
             @Param("warehouseId") Long warehouseId, 
             @Param("materialIds") List<Long> materialIds);
+
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT k FROM KitchenStockItem k
+        WHERE k.warehouse.warehouseId = :warehouseId
+        AND k.material.id IN :materialIds
+        ORDER BY k.material.id ASC,
+                 k.expiryDate ASC NULLS LAST,
+                 k.id ASC
+    """)
+    List<KitchenStockItem> lockMaterialsForDeduction(
+            @Param("warehouseId") Long warehouseId,
+            @Param("materialIds") List<Long> materialIds);
 }

@@ -196,4 +196,143 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                 .coordinatorUserId(plan.getCoordinatorUser().getUserId())
                 .build();
     }
+
+    @Override
+    public ProductionPlanResponse startProductionPlan(Long planId, Long requestVersion) {
+        // Step 1: Validate Kitchen: User context current kitchen MUST match Plan's kitchen (or Admin)
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null) {
+            throw new AccessDeniedException("User context not found or not authenticated");
+        }
+        User currentUser = userRepository.findById(ctx.getUserId())
+                .orElseThrow(() -> new AccessDeniedException("User not found in system"));
+
+        boolean isAdmin = currentUser.getRole() != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName());
+        ProductionPlan plan;
+        
+        // Step 2: Fetch ProductionPlan
+        if (!isAdmin) {
+            if (currentUser.getKitchen() == null) {
+                throw new AccessDeniedException("You do not have permission to modify this Production Plan.");
+            }
+            plan = productionPlanRepository.findByPlanIdAndKitchen_KitchenId(planId, currentUser.getKitchen().getKitchenId())
+                    .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found or you don't have access. ID: " + planId));
+        } else {
+             plan = productionPlanRepository.findById(planId)
+                    .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found with id: " + planId));
+        }
+
+        // Step 3: Idempotency Check
+        if (plan.getStatus() == ProductionPlanStatus.IN_PRODUCTION) {
+             return ProductionPlanResponse.builder()
+                .planId(plan.getPlanId())
+                .planName(plan.getPlanName())
+                .batchCode(plan.getBatchCode())
+                .kitchenId(plan.getKitchen().getKitchenId())
+                .status(plan.getStatus().name())
+                .createdAt(plan.getCreatedAt())
+                .coordinatorUserId(plan.getCoordinatorUser().getUserId())
+                .build();
+        }
+
+        // Step 4: Validate status == READY_TO_PRODUCE
+        if (plan.getStatus() != ProductionPlanStatus.READY_TO_PRODUCE) {
+            throw new OrderAssignmentConflictException("Production Plan is not in READY_TO_PRODUCE state. Current state: " + plan.getStatus());
+        }
+
+        // Step 5: Optimistic Locking version set
+        if (requestVersion != null) {
+            plan.setVersion(requestVersion);
+        }
+
+        // Step 6: Fetch default warehouse of the kitchen
+        com.swp.ckms.entity.KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("No default warehouse found for Kitchen ID: " + plan.getKitchen().getKitchenId()));
+
+        // Step 7: Load List ProductionPlanMaterialRequirement (Snapshot)
+        List<ProductionPlanMaterialRequirement> requirements = materialRequirementRepository.findByPlan_PlanId(planId);
+        if (requirements.isEmpty()) {
+            throw new OrderAssignmentConflictException("Plan has no material requirements. Cannot start producing.");
+        }
+
+        List<Long> materialIds = requirements.stream()
+                .map(req -> req.getMaterial().getId())
+                .collect(java.util.stream.Collectors.toList());
+
+        // Step 8: Lock Materials for Deduction (PESSIMISTIC_WRITE + ORDER BY materialId, expiryDate NULLS LAST, id)
+        List<com.swp.ckms.entity.KitchenStockItem> lockedItems = kitchenStockItemRepository.lockMaterialsForDeduction(warehouse.getWarehouseId(), materialIds);
+
+        // Group locked items by materialId for easier FIFO deduction
+        java.util.Map<Long, java.util.List<com.swp.ckms.entity.KitchenStockItem>> itemsByMaterial = lockedItems.stream()
+                .collect(java.util.stream.Collectors.groupingBy(item -> item.getMaterial().getId()));
+
+        List<com.swp.ckms.dto.response.MissingMaterialResponse> missingMaterials = new java.util.ArrayList<>();
+
+        // Step 9: FIFO Deduct Algorithm
+        for (ProductionPlanMaterialRequirement req : requirements) {
+            Long matId = req.getMaterial().getId();
+            java.math.BigDecimal requiredQty = req.getRequiredQuantity();
+            
+            java.util.List<com.swp.ckms.entity.KitchenStockItem> availableItemsForMatId = itemsByMaterial.getOrDefault(matId, java.util.Collections.emptyList());
+            
+            for (com.swp.ckms.entity.KitchenStockItem item : availableItemsForMatId) {
+                if (requiredQty.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+                    break;
+                }
+                
+                java.math.BigDecimal itemQty = item.getQuantity();
+                if (itemQty.compareTo(java.math.BigDecimal.ZERO) <= 0) continue;
+                
+                if (itemQty.compareTo(requiredQty) <= 0) {
+                    // Exhaust this item
+                    requiredQty = requiredQty.subtract(itemQty);
+                    item.setQuantity(java.math.BigDecimal.ZERO);
+                } else {
+                    // Partially use this item
+                    item.setQuantity(itemQty.subtract(requiredQty));
+                    requiredQty = java.math.BigDecimal.ZERO;
+                }
+            }
+            
+            // If requiredQty > 0 after checking all items, we are short on this material
+            if (requiredQty.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                 java.math.BigDecimal availableQtyForMatId = availableItemsForMatId.stream()
+                        .map(com.swp.ckms.entity.KitchenStockItem::getQuantity)
+                        // Should technically sum up original qty before our deductions, 
+                        // but req.getRequiredQuantity() - requiredQty is what we managed to deduct.
+                        .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add)
+                        .add(req.getRequiredQuantity().subtract(requiredQty)); 
+
+                 missingMaterials.add(com.swp.ckms.dto.response.MissingMaterialResponse.builder()
+                        .materialId(matId)
+                        .materialName(req.getMaterial().getName())
+                        .requiredQuantity(req.getRequiredQuantity())
+                        .availableQuantity(availableQtyForMatId)
+                        .missingQuantity(requiredQty)
+                        .build());
+            }
+        }
+
+        if (!missingMaterials.isEmpty()) {
+            throw new com.swp.ckms.exception.business.InsufficientMaterialException("Not enough materials to start the Production Plan.", missingMaterials);
+        }
+
+        // Step 11: Cập nhật plan.setStatus(IN_PRODUCTION)
+        plan.setStatus(ProductionPlanStatus.IN_PRODUCTION);
+        // Step 10 & 11: Save plan (triggers version check) and let dirty checking save KitchenStockItem
+        productionPlanRepository.save(plan);
+
+        // Step 12: Return response
+        return ProductionPlanResponse.builder()
+                .planId(plan.getPlanId())
+                .planName(plan.getPlanName())
+                .batchCode(plan.getBatchCode())
+                .kitchenId(plan.getKitchen().getKitchenId())
+                .status(plan.getStatus().name())
+                .createdAt(plan.getCreatedAt())
+                .coordinatorUserId(plan.getCoordinatorUser().getUserId())
+                .build();
+    }
 }
