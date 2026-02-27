@@ -61,4 +61,18 @@ public class ProductionPlanController {
         ProductionPlanResponse response = productionPlanService.cancelProductionPlan(id, version, returnInventory);
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping
+    @PreAuthorize("hasRole('KITCHEN_STAFF') or hasRole('COORDINATOR') or hasRole('ADMIN')")
+    public ResponseEntity<org.springframework.data.domain.Page<com.swp.ckms.dto.response.ProductionPlanSummaryResponse>> getAllProductionPlans(
+            @RequestParam(required = false) com.swp.ckms.enums.ProductionPlanStatus status,
+            org.springframework.data.domain.Pageable pageable) {
+        return ResponseEntity.ok(productionPlanService.getAllProductionPlans(status, pageable));
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasRole('KITCHEN_STAFF') or hasRole('COORDINATOR') or hasRole('ADMIN')")
+    public ResponseEntity<com.swp.ckms.dto.response.ProductionPlanDetailResponse> getProductionPlanDetail(@PathVariable Long id) {
+        return ResponseEntity.ok(productionPlanService.getProductionPlanDetail(id));
+    }
 }

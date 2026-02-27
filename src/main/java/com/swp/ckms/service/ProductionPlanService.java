@@ -9,4 +9,9 @@ public interface ProductionPlanService {
     ProductionPlanResponse startProductionPlan(Long planId, Long requestVersion);
     ProductionPlanResponse finishProductionPlan(Long planId, Long requestVersion);
     ProductionPlanResponse cancelProductionPlan(Long planId, Long requestVersion, boolean returnInventory);
+
+    org.springframework.data.domain.Page<com.swp.ckms.dto.response.ProductionPlanSummaryResponse> getAllProductionPlans(
+            com.swp.ckms.enums.ProductionPlanStatus status, org.springframework.data.domain.Pageable pageable);
+
+    com.swp.ckms.dto.response.ProductionPlanDetailResponse getProductionPlanDetail(Long planId);
 }

@@ -545,4 +545,92 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                 .coordinatorUserId(plan.getCoordinatorUser().getUserId())
                 .build();
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<com.swp.ckms.dto.response.ProductionPlanSummaryResponse> getAllProductionPlans(
+            com.swp.ckms.enums.ProductionPlanStatus status, org.springframework.data.domain.Pageable pageable) {
+        
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null) throw new AccessDeniedException("Unauthorized");
+        
+        User currentUser = userRepository.findById(ctx.getUserId())
+                .orElseThrow(() -> new AccessDeniedException("User not found"));
+
+        org.springframework.data.jpa.domain.Specification<ProductionPlan> spec = 
+                org.springframework.data.jpa.domain.Specification.where(
+                        com.swp.ckms.repository.specification.ProductionPlanSpecification.hasStatus(status)
+                );
+
+        // Security Scope: STAFF only see their kitchen
+        boolean isAdminOrCoordinator = currentUser.getRole() != null && 
+                ("ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName()) || 
+                 "COORDINATOR".equalsIgnoreCase(currentUser.getRole().getRoleName()));
+
+        if (!isAdminOrCoordinator) {
+            if (currentUser.getKitchen() == null) {
+                return org.springframework.data.domain.Page.empty(pageable);
+            }
+            spec = spec.and(com.swp.ckms.repository.specification.ProductionPlanSpecification.hasKitchenId(
+                    currentUser.getKitchen().getKitchenId()));
+        }
+
+        return productionPlanRepository.findAll(spec, pageable)
+                .map(this::mapToSummaryResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.swp.ckms.dto.response.ProductionPlanDetailResponse getProductionPlanDetail(Long planId) {
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null) throw new AccessDeniedException("Unauthorized");
+        
+        User currentUser = userRepository.findById(ctx.getUserId())
+                .orElseThrow(() -> new AccessDeniedException("User not found"));
+
+        // Optimized fetch with JOIN FETCH
+        ProductionPlan plan = productionPlanRepository.findByIdWithMaterials(planId)
+                .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found with id: " + planId));
+
+        // Security Scope: 404 Not Found if mismatch kitchen for STAFF
+        boolean isAdminOrCoordinator = currentUser.getRole() != null && 
+                ("ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName()) || 
+                 "COORDINATOR".equalsIgnoreCase(currentUser.getRole().getRoleName()));
+
+        if (!isAdminOrCoordinator) {
+            if (currentUser.getKitchen() == null || 
+                !currentUser.getKitchen().getKitchenId().equals(plan.getKitchen().getKitchenId())) {
+                throw new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found with id: " + planId);
+            }
+        }
+
+        return com.swp.ckms.dto.response.ProductionPlanDetailResponse.builder()
+                .planId(plan.getPlanId())
+                .planName(plan.getPlanName())
+                .batchCode(plan.getBatchCode())
+                .kitchenId(plan.getKitchen().getKitchenId())
+                .status(plan.getStatus().name())
+                .createdAt(plan.getCreatedAt())
+                .coordinatorUserId(plan.getCoordinatorUser().getUserId())
+                .materials(plan.getMaterialRequirements().stream()
+                        .map(req -> com.swp.ckms.dto.response.MaterialRequirementResponse.builder()
+                                .materialId(req.getMaterial().getId())
+                                .materialName(req.getMaterial().getName())
+                                .requiredQuantity(req.getRequiredQuantity())
+                                .build())
+                        .collect(java.util.stream.Collectors.toList()))
+                .build();
+    }
+
+    private com.swp.ckms.dto.response.ProductionPlanSummaryResponse mapToSummaryResponse(ProductionPlan plan) {
+        return com.swp.ckms.dto.response.ProductionPlanSummaryResponse.builder()
+                .planId(plan.getPlanId())
+                .planName(plan.getPlanName())
+                .batchCode(plan.getBatchCode())
+                .kitchenId(plan.getKitchen().getKitchenId())
+                .status(plan.getStatus().name())
+                .createdAt(plan.getCreatedAt())
+                .coordinatorUserId(plan.getCoordinatorUser().getUserId())
+                .build();
+    }
 }
