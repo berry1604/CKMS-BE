@@ -41,4 +41,7 @@ public class ProductionPlan {
 
     @Version
     private Long version;
+
+    @OneToMany(mappedBy = "plan", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    private java.util.List<ProductionPlanMaterialRequirement> materialRequirements;
 }
