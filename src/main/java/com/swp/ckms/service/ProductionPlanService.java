@@ -8,4 +8,5 @@ public interface ProductionPlanService {
     ProductionPlanResponse checkAndReadyPlan(Long planId);
     ProductionPlanResponse startProductionPlan(Long planId, Long requestVersion);
     ProductionPlanResponse finishProductionPlan(Long planId, Long requestVersion);
+    ProductionPlanResponse cancelProductionPlan(Long planId, Long requestVersion, boolean returnInventory);
 }
