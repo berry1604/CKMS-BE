@@ -35,7 +35,7 @@ public class ProductionPlanController {
     }
     
     @PostMapping("/{id}/start")
-    @PreAuthorize("hasRole('COORDINATOR') or hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('KITCHEN_STAFF', 'COORDINATOR', 'ADMIN')")
     public ResponseEntity<ProductionPlanResponse> startProductionPlan(
             @PathVariable Long id,
             @RequestHeader(value = "If-Match", required = false) Long version) {
@@ -44,7 +44,7 @@ public class ProductionPlanController {
     }
 
     @PostMapping("/{id}/finish")
-    @PreAuthorize("hasRole('COORDINATOR') or hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('KITCHEN_STAFF', 'COORDINATOR', 'ADMIN')")
     public ResponseEntity<ProductionPlanResponse> finishProductionPlan(
             @PathVariable Long id,
             @RequestHeader(value = "If-Match", required = false) Long version) {

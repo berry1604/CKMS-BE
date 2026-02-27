@@ -33,6 +33,10 @@ public class InventoryTransaction {
     @JoinColumn(name = "material_id")
     private Material material;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_id")
+    private Product product;
+
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal quantity;
 

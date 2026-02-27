@@ -409,7 +409,49 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         // Step 6: Bulk Update Store Orders (Only GROUPED -> READY)
         storeOrderRepository.updateOrderStatusToReadyByPlanId(planId);
 
-        // Step 7: Return response
+        // Step 7: Feedback Loop - Add produced items to Kitchen Stock
+        // Find default warehouse for the plan's kitchen
+        com.swp.ckms.entity.KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("No default warehouse found for production feedback loop. Kitchen ID: " + plan.getKitchen().getKitchenId()));
+
+        // Aggregate products from all orders in this plan
+        List<com.swp.ckms.entity.StoreOrder> orders = storeOrderRepository.findByProductionPlan_PlanId(planId);
+        
+        for (com.swp.ckms.entity.StoreOrder order : orders) {
+            for (com.swp.ckms.entity.OrderDetail detail : order.getOrderDetails()) {
+                com.swp.ckms.entity.Product product = detail.getProduct();
+                java.math.BigDecimal producedQty = java.math.BigDecimal.valueOf(detail.getQuantity());
+
+                // Find or create stock item (for finished product, batchCode might be plan's batchCode)
+                com.swp.ckms.entity.KitchenStockItem stockItem = kitchenStockItemRepository
+                        .findByWarehouse_WarehouseIdAndProduct_Id(warehouse.getWarehouseId(), product.getId())
+                        .stream().findFirst()
+                        .orElseGet(() -> com.swp.ckms.entity.KitchenStockItem.builder()
+                                .warehouse(warehouse)
+                                .product(product)
+                                .quantity(java.math.BigDecimal.ZERO)
+                                .build());
+
+                stockItem.setQuantity(stockItem.getQuantity().add(producedQty));
+                stockItem.setProductionPlan(plan); // Tag with the plan that produced it
+                kitchenStockItemRepository.save(stockItem);
+
+                // Audit: Record Transaction
+                com.swp.ckms.entity.InventoryTransaction tx = com.swp.ckms.entity.InventoryTransaction.builder()
+                        .warehouse(warehouse)
+                        .type(com.swp.ckms.enums.InventoryTransactionType.PRODUCTION_ADD)
+                        .product(product) // Set product field
+                        .quantity(producedQty)
+                        .refId(planId)
+                        .note("Thêm thành phẩm từ kế hoạch sản xuất: " + plan.getBatchCode())
+                        .build();
+                inventoryTransactionRepository.save(tx);
+            }
+        }
+
+        // Step 8: Return response
         return ProductionPlanResponse.builder()
                 .planId(plan.getPlanId())
                 .planName(plan.getPlanName())
