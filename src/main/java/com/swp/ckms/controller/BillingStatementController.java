@@ -3,6 +3,7 @@ package com.swp.ckms.controller;
 import com.swp.ckms.dto.request.BatchBillingStatementRequest;
 import com.swp.ckms.dto.response.ApiResponse;
 import com.swp.ckms.dto.response.BatchBillingStatementResponse;
+import com.swp.ckms.dto.response.BillingStatementDetailResponse;
 import com.swp.ckms.dto.response.BillingStatementResponse;
 import com.swp.ckms.dto.response.BillingStatementSummaryResponse;
 import com.swp.ckms.enums.BillingStatementStatus;
@@ -74,6 +75,20 @@ public class BillingStatementController {
                 .body(ApiResponse.<Page<BillingStatementSummaryResponse>>builder()
                         .status(HttpStatus.OK.value())
                         .message("Statements fetched successfully")
+                        .data(response)
+                        .timestamp(java.time.LocalDateTime.now())
+                        .build());
+    }
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF_STORE')")
+    public ResponseEntity<ApiResponse<BillingStatementDetailResponse>> getStatementDetail(@PathVariable Long id) {
+        BillingStatementDetailResponse response = billingStatementService.getStatementById(id);
+        
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(ApiResponse.<BillingStatementDetailResponse>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("Statement detailed information fetched successfully")
                         .data(response)
                         .timestamp(java.time.LocalDateTime.now())
                         .build());

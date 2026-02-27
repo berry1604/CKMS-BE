@@ -2,8 +2,11 @@ package com.swp.ckms.service.impl;
 
 import com.swp.ckms.dto.request.BatchBillingStatementRequest;
 import com.swp.ckms.dto.response.BatchBillingStatementResponse;
+import com.swp.ckms.dto.response.BillingStatementDetailResponse;
 import com.swp.ckms.dto.response.BillingStatementResponse;
 import com.swp.ckms.dto.response.BillingStatementSummaryResponse;
+import com.swp.ckms.dto.response.InvoiceDetailResponse;
+import com.swp.ckms.dto.response.StoreSimpleResponse;
 import com.swp.ckms.entity.BillingStatement;
 import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.Invoice;
@@ -196,5 +199,45 @@ public class BillingStatementServiceImpl implements BillingStatementService {
         }
 
         return billingStatementRepository.findSummary(finalStoreIdFilter, status, pageable);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public BillingStatementDetailResponse getStatementById(Long id) {
+        UserContext userContext = SecurityUtils.getCurrentUserContext();
+        if (userContext == null) {
+            throw new ForbiddenException("Authentication required");
+        }
+
+        boolean isStaffStore = userContext.getRoles().contains("ROLE_STAFF_STORE");
+        BillingStatement statement;
+
+        if (isStaffStore) {
+            Long userStoreId = userContext.getStoreId();
+            // Fast fail with 404 to avoid ID probing
+            statement = billingStatementRepository.findByStatementIdAndStore_StoreId(id, userStoreId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Billing statement not found or you don't have permission"));
+        } else {
+            statement = billingStatementRepository.findById(id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Billing statement not found"));
+        }
+
+        List<InvoiceDetailResponse> invoiceDetails = invoiceRepository.findInvoiceDetailsByStatementId(id);
+
+        StoreSimpleResponse storeSimple = StoreSimpleResponse.builder()
+                .id(statement.getStore().getStoreId())
+                .name(statement.getStore().getName())
+                .build();
+
+        return BillingStatementDetailResponse.builder()
+                .statementId(statement.getStatementId())
+                .store(storeSimple)
+                .periodStart(statement.getCycleStart())
+                .periodEnd(statement.getCycleEnd())
+                .totalAmount(statement.getTotalAmount())
+                .status(statement.getStatus().name())
+                .paidAt(statement.getPaidAt())
+                .invoices(invoiceDetails)
+                .build();
     }
 }

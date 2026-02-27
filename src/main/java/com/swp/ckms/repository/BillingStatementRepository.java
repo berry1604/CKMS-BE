@@ -23,6 +23,8 @@ public interface BillingStatementRepository extends JpaRepository<BillingStateme
                                        @Param("start") LocalDate start, 
                                        @Param("end") LocalDate end);
 
+    java.util.Optional<BillingStatement> findByStatementIdAndStore_StoreId(Long statementId, Long storeId);
+
     @Query("""
             SELECT new com.swp.ckms.dto.response.BillingStatementSummaryResponse(
                 b.statementId,
