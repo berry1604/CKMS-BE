@@ -1,6 +1,11 @@
 package com.swp.ckms.repository;
 
+import com.swp.ckms.dto.response.BillingStatementSummaryResponse;
 import com.swp.ckms.entity.BillingStatement;
+import com.swp.ckms.enums.BillingStatementStatus;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,4 +22,21 @@ public interface BillingStatementRepository extends JpaRepository<BillingStateme
     boolean existsOverlappingStatement(@Param("storeId") Long storeId, 
                                        @Param("start") LocalDate start, 
                                        @Param("end") LocalDate end);
+
+    @Query("""
+            SELECT new com.swp.ckms.dto.response.BillingStatementSummaryResponse(
+                b.statementId,
+                CONCAT('Kỳ T', DATE_FORMAT(b.cycleStart, '%m/%Y')),
+                b.totalAmount,
+                CAST(b.status AS string),
+                b.issuedAt
+            )
+            FROM BillingStatement b
+            WHERE (:storeId IS NULL OR b.store.storeId = :storeId)
+            AND (:status IS NULL OR b.status = :status)
+            """)
+    Page<BillingStatementSummaryResponse> findSummary(
+            @Param("storeId") Long storeId,
+            @Param("status") BillingStatementStatus status,
+            Pageable pageable);
 }

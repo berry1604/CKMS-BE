@@ -3,20 +3,26 @@ package com.swp.ckms.service.impl;
 import com.swp.ckms.dto.request.BatchBillingStatementRequest;
 import com.swp.ckms.dto.response.BatchBillingStatementResponse;
 import com.swp.ckms.dto.response.BillingStatementResponse;
+import com.swp.ckms.dto.response.BillingStatementSummaryResponse;
 import com.swp.ckms.entity.BillingStatement;
 import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.Invoice;
 import com.swp.ckms.enums.BillingStatementStatus;
 import com.swp.ckms.enums.InvoiceStatus;
 import com.swp.ckms.exception.business.DuplicateResourceException;
+import com.swp.ckms.exception.business.ForbiddenException;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.exception.validation.InvalidRequestException;
 import com.swp.ckms.repository.BillingStatementRepository;
 import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.InvoiceRepository;
+import com.swp.ckms.security.SecurityUtils;
+import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.BillingStatementService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -164,5 +170,31 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .storesSkippedNoInvoices(storesSkippedNoInvoices)
                 .status("COMPLETED")
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<BillingStatementSummaryResponse> getStatements(Long storeId, BillingStatementStatus status, Pageable pageable) {
+        UserContext userContext = SecurityUtils.getCurrentUserContext();
+        if (userContext == null) {
+            throw new ForbiddenException("Authentication required");
+        }
+
+        Long finalStoreIdFilter = storeId;
+        boolean isStaffStore = userContext.getRoles().contains("ROLE_STAFF_STORE");
+
+        if (isStaffStore) {
+            Long userStoreId = userContext.getStoreId();
+            if (userStoreId == null) {
+                throw new ForbiddenException("Staff does not belong to any store");
+            }
+            // Strict logic: If staff tries to query a store they don't own, immediately throw 403 Forbidden.
+            if (storeId != null && !storeId.equals(userStoreId)) {
+                throw new ForbiddenException("You cannot access statements of other stores");
+            }
+            finalStoreIdFilter = userStoreId;
+        }
+
+        return billingStatementRepository.findSummary(finalStoreIdFilter, status, pageable);
     }
 }

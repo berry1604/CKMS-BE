@@ -47,7 +47,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({
         UserDisabledException.class,
-        AccessDeniedException.class
+        AccessDeniedException.class,
+        ForbiddenException.class
     })
     public ResponseEntity<ApiResponse<Void>> handleAccessDenied(Exception ex) {
         return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage());

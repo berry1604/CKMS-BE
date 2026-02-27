@@ -4,8 +4,14 @@ import com.swp.ckms.dto.request.BatchBillingStatementRequest;
 import com.swp.ckms.dto.response.ApiResponse;
 import com.swp.ckms.dto.response.BatchBillingStatementResponse;
 import com.swp.ckms.dto.response.BillingStatementResponse;
+import com.swp.ckms.dto.response.BillingStatementSummaryResponse;
+import com.swp.ckms.enums.BillingStatementStatus;
 import com.swp.ckms.service.BillingStatementService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -50,6 +56,24 @@ public class BillingStatementController {
                 .body(ApiResponse.<BatchBillingStatementResponse>builder()
                         .status(HttpStatus.OK.value())
                         .message("Batch billing statements execution completed")
+                        .data(response)
+                        .timestamp(java.time.LocalDateTime.now())
+                        .build());
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'STAFF_STORE')")
+    public ResponseEntity<ApiResponse<Page<BillingStatementSummaryResponse>>> getStatements(
+            @RequestParam(required = false) Long storeId,
+            @RequestParam(required = false) BillingStatementStatus status,
+            @PageableDefault(sort = "issuedAt", direction = Sort.Direction.DESC) Pageable pageable) {
+
+        Page<BillingStatementSummaryResponse> response = billingStatementService.getStatements(storeId, status, pageable);
+
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(ApiResponse.<Page<BillingStatementSummaryResponse>>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("Statements fetched successfully")
                         .data(response)
                         .timestamp(java.time.LocalDateTime.now())
                         .build());
