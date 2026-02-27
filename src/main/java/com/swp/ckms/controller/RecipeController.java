@@ -22,7 +22,7 @@ public class RecipeController {
     private final RecipeService recipeService;
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<RecipeResponse>> createRecipe(
             @Valid @RequestBody RecipeRequest request,
             Principal principal) {
@@ -39,7 +39,7 @@ public class RecipeController {
     }
 
     @GetMapping("/product/{productId}/active")
-    @PreAuthorize("hasAnyRole('COORDINATOR', 'ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('STORE_MANAGER', 'COORDINATOR', 'ADMIN')")
     public ResponseEntity<ApiResponse<RecipeResponse>> getActiveRecipe(@PathVariable Long productId) {
         RecipeResponse response = recipeService.getActiveRecipeByProductId(productId);
         

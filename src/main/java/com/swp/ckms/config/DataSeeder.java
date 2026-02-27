@@ -66,51 +66,67 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedUsersAndRoles(Set<Privilege> allPrivileges) {
-        // 1. Seed ADMIN Role & User (Restricted to USER/ROLE management)
-        Set<Privilege> adminPrivileges = allPrivileges.stream()
-                .filter(p -> p.getCode().contains("USER") || p.getCode().contains("ROLE") || p.getCode().equals("VIEW_DASHBOARD"))
-                .collect(Collectors.toSet());
-        Role adminRole = seedRole("ADMIN", adminPrivileges);
+        // 1. ADMIN - All privileges
+        Role adminRole = seedRole("ADMIN", allPrivileges);
         seedUser("admin", "admin@ckms.com", "admin", "System Administrator", adminRole, null);
 
-        // 2. Seed COORDINATOR Role & User [NEW]
+        // 2. COORDINATOR - Order processing & Production planning
+        Set<String> coordinatorCodes = new HashSet<>(Arrays.asList(
+                "VIEW_STORE_ORDER", "UPDATE_STORE_ORDER",
+                "CREATE_PRODUCTION_PLAN", "VIEW_PRODUCTION_PLAN", "UPDATE_PRODUCTION_PLAN",
+                "CREATE_SHIPMENT", "VIEW_SHIPMENT",
+                "VIEW_INVOICE", "VIEW_KITCHEN_INVENTORY", "VIEW_DASHBOARD"
+        ));
         Set<Privilege> coordinatorPrivileges = allPrivileges.stream()
-                .filter(p -> p.getCode().equals("VIEW_STORE_ORDER") || p.getCode().equals("UPDATE_STORE_ORDER"))
+                .filter(p -> coordinatorCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role coordinatorRole = seedRole("COORDINATOR", coordinatorPrivileges);
         seedUser("coordinator", "coordinator@ckms.com", "coordinator", "Order Coordinator", coordinatorRole, null);
 
-        // 3. Seed MANAGER Role & User (Keep as is or adjust if needed)
+        // 3. KITCHEN_STAFF - Execution & Inventory Management
+        Set<String> kitchenCodes = new HashSet<>(Arrays.asList(
+                "VIEW_PRODUCTION_PLAN", "UPDATE_PRODUCTION_PLAN",
+                "VIEW_KITCHEN_INVENTORY", "UPDATE_KITCHEN_INVENTORY",
+                "VIEW_SHIPMENT"
+        ));
+        Set<Privilege> kitchenPrivileges = allPrivileges.stream()
+                .filter(p -> kitchenCodes.contains(p.getCode()))
+                .collect(Collectors.toSet());
+        Role kitchenStaffRole = seedRole("KITCHEN_STAFF", kitchenPrivileges);
+        seedUser("kitchenstaff", "kitchen@ckms.com", "staff", "Kitchen Execution Staff", kitchenStaffRole, null);
+
+        // 4. STORE_MANAGER - Ordering & Store Management
+        Set<String> managerCodes = new HashSet<>(Arrays.asList(
+                "CREATE_STORE_ORDER", "VIEW_STORE_ORDER",
+                "VIEW_STORE_INVENTORY", "CONFIRM_SHIPMENT",
+                "VIEW_BILLING", "VIEW_PRODUCT"
+        ));
         Set<Privilege> managerPrivileges = allPrivileges.stream()
-                .filter(p -> p.getCode().contains("CATEGORY") || p.getCode().contains("MATERIAL") || p.getCode().contains("PRODUCT"))
+                .filter(p -> managerCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
-        Role managerRole = seedRole("MANAGER", managerPrivileges);
-        seedUser("manager", "manager@ckms.com", "manager", "Store Manager", managerRole, null);
+        Role managerRole = seedRole("STORE_MANAGER", managerPrivileges);
+        
+        FranchiseStore store = franchiseStoreRepository.findById(1L).orElse(null);
+        seedUser("storemanager", "manager@ckms.com", "manager", "Store Manager", managerRole, store);
 
-        // 4. Seed STAFF Role & User (View only)
-        Set<Privilege> staffPrivileges = allPrivileges.stream()
-                .filter(p -> p.getCode().startsWith("VIEW_") && !p.getCode().equals("VIEW_STORE_ORDER"))
-                .collect(Collectors.toSet());
-        Role staffRole = seedRole("STAFF", staffPrivileges);
-        seedUser("staff", "staff@ckms.com", "staff", "Kitchen Staff", staffRole, null);
-
-        // 5. Seed STORE_STAFF Role & User
+        // 5. STORE_STAFF - Inventory & Shipment Confirmation
+        Set<String> storeStaffCodes = new HashSet<>(Arrays.asList(
+                "VIEW_STORE_ORDER", "VIEW_STORE_INVENTORY",
+                "CONFIRM_SHIPMENT", "VIEW_PRODUCT"
+        ));
         Set<Privilege> storeStaffPrivileges = allPrivileges.stream()
-                .filter(p -> p.getCode().equals("CREATE_STORE_ORDER") || p.getCode().equals("VIEW_STORE_ORDER"))
+                .filter(p -> storeStaffCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role storeStaffRole = seedRole("STORE_STAFF", storeStaffPrivileges);
-
-        // To assign a store, we fetch the default store first
-        FranchiseStore store = franchiseStoreRepository.findById(1L).orElse(null);
-        seedUser("storestaff", "storestaff@ckms.com", "staff", "Store Staff", storeStaffRole, store);
+        seedUser("storestaff", "storestaff@ckms.com", "staff", "Store Receipt Staff", storeStaffRole, store);
     }
 
     private Role seedRole(String roleName, Set<Privilege> privileges) {
         return roleRepository.findByRoleName(roleName)
-                // .map(role -> {
-                //     role.setPrivileges(privileges);
-                //     return roleRepository.save(role);
-                // })
+                .map(role -> {
+                    role.setPrivileges(privileges);
+                    return roleRepository.save(role);
+                })
                 .orElseGet(() -> roleRepository.save(Role.builder()
                         .roleName(roleName)
                         .privileges(privileges)
