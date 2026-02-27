@@ -51,4 +51,14 @@ public class ProductionPlanController {
         ProductionPlanResponse response = productionPlanService.finishProductionPlan(id, version);
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('COORDINATOR') or hasRole('ADMIN')")
+    public ResponseEntity<ProductionPlanResponse> cancelProductionPlan(
+            @PathVariable Long id,
+            @RequestHeader(value = "If-Match", required = false) Long version,
+            @RequestParam(name = "returnInventory", defaultValue = "true") boolean returnInventory) {
+        ProductionPlanResponse response = productionPlanService.cancelProductionPlan(id, version, returnInventory);
+        return ResponseEntity.ok(response);
+    }
 }
