@@ -9,6 +9,7 @@ import com.swp.ckms.entity.OrderDetail;
 import com.swp.ckms.entity.Product;
 import com.swp.ckms.entity.StoreOrder;
 import com.swp.ckms.entity.User;
+import com.swp.ckms.enums.InvoiceStatus;
 import com.swp.ckms.enums.OrderStatus;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.repository.FranchiseStoreRepository;
@@ -196,11 +197,12 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                     .order(order)
                     .amount(order.getTotalAmount())
                     .issuedAt(LocalDateTime.now())
-                    .status("UNPAID")
+                    .status(InvoiceStatus.PENDING)
                     .build();
             
             invoiceRepository.save(invoice);
-            order.setInvoice(invoice); // Link back
+            order.setInvoice(invoice); // Link back to the invoice
+
 
         } else if (newStatus == OrderStatus.REJECTED) {
             order.setStatus(OrderStatus.REJECTED);
