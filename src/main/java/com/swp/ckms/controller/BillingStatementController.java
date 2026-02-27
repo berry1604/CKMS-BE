@@ -1,11 +1,13 @@
 package com.swp.ckms.controller;
 
 import com.swp.ckms.dto.request.BatchBillingStatementRequest;
+import com.swp.ckms.dto.request.PaymentStatementRequest;
 import com.swp.ckms.dto.response.ApiResponse;
 import com.swp.ckms.dto.response.BatchBillingStatementResponse;
 import com.swp.ckms.dto.response.BillingStatementDetailResponse;
 import com.swp.ckms.dto.response.BillingStatementResponse;
 import com.swp.ckms.dto.response.BillingStatementSummaryResponse;
+import com.swp.ckms.dto.response.PaymentStatementResponse;
 import com.swp.ckms.enums.BillingStatementStatus;
 import com.swp.ckms.service.BillingStatementService;
 import lombok.RequiredArgsConstructor;
@@ -89,6 +91,23 @@ public class BillingStatementController {
                 .body(ApiResponse.<BillingStatementDetailResponse>builder()
                         .status(HttpStatus.OK.value())
                         .message("Statement detailed information fetched successfully")
+                        .data(response)
+                        .timestamp(java.time.LocalDateTime.now())
+                        .build());
+    }
+
+    @PatchMapping("/{id}/pay")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse<PaymentStatementResponse>> payStatement(
+            @PathVariable Long id,
+            @RequestBody PaymentStatementRequest request) {
+        
+        PaymentStatementResponse response = billingStatementService.payStatement(id, request);
+        
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(ApiResponse.<PaymentStatementResponse>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("Statement payment successfully processed")
                         .data(response)
                         .timestamp(java.time.LocalDateTime.now())
                         .build());

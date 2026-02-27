@@ -1,15 +1,18 @@
 package com.swp.ckms.service.impl;
 
 import com.swp.ckms.dto.request.BatchBillingStatementRequest;
+import com.swp.ckms.dto.request.PaymentStatementRequest;
 import com.swp.ckms.dto.response.BatchBillingStatementResponse;
 import com.swp.ckms.dto.response.BillingStatementDetailResponse;
 import com.swp.ckms.dto.response.BillingStatementResponse;
 import com.swp.ckms.dto.response.BillingStatementSummaryResponse;
 import com.swp.ckms.dto.response.InvoiceDetailResponse;
+import com.swp.ckms.dto.response.PaymentStatementResponse;
 import com.swp.ckms.dto.response.StoreSimpleResponse;
 import com.swp.ckms.entity.BillingStatement;
 import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.Invoice;
+import com.swp.ckms.entity.PaymentMethod;
 import com.swp.ckms.enums.BillingStatementStatus;
 import com.swp.ckms.enums.InvoiceStatus;
 import com.swp.ckms.exception.business.DuplicateResourceException;
@@ -19,6 +22,7 @@ import com.swp.ckms.exception.validation.InvalidRequestException;
 import com.swp.ckms.repository.BillingStatementRepository;
 import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.InvoiceRepository;
+import com.swp.ckms.repository.PaymentMethodRepository;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.BillingStatementService;
@@ -44,6 +48,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     private final BillingStatementRepository billingStatementRepository;
     private final InvoiceRepository invoiceRepository;
     private final FranchiseStoreRepository franchiseStoreRepository;
+    private final PaymentMethodRepository paymentMethodRepository;
 
     @Override
     @Transactional
@@ -75,7 +80,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .cycleStart(periodStart)
                 .cycleEnd(periodEnd)
                 .totalAmount(totalAmount)
-                .status(BillingStatementStatus.UNPAID)
+                .status(BillingStatementStatus.ISSUED)
                 .build();
 
         BillingStatement savedStatement = billingStatementRepository.save(statement);
@@ -149,7 +154,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                         .cycleStart(periodStart)
                         .cycleEnd(periodEnd)
                         .totalAmount(totalAmount)
-                        .status(BillingStatementStatus.UNPAID)
+                        .status(BillingStatementStatus.ISSUED)
                         .build();
 
                 BillingStatement savedStatement = billingStatementRepository.save(statement);
@@ -238,6 +243,49 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .status(statement.getStatus().name())
                 .paidAt(statement.getPaidAt())
                 .invoices(invoiceDetails)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public PaymentStatementResponse payStatement(Long id, PaymentStatementRequest request) {
+        BillingStatement statement = billingStatementRepository.findForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Billing statement not found"));
+
+        if (statement.getStatus() == BillingStatementStatus.PAID) {
+            // Idempotency check: Immediately return state without Exception on consecutive requests
+            return PaymentStatementResponse.builder()
+                    .statementId(statement.getStatementId())
+                    .status(statement.getStatus().name())
+                    .paidAt(statement.getPaidAt())
+                    .transactionReference(statement.getTransactionReference())
+                    .build();
+        }
+
+        if (statement.getStatus() != BillingStatementStatus.ISSUED && statement.getStatus() != BillingStatementStatus.OVERDUE) {
+            throw new InvalidRequestException("Only ISSUED or OVERDUE statements can be paid.");
+        }
+
+        PaymentMethod method = null;
+        if (request.getPaymentMethodId() != null) {
+            method = paymentMethodRepository.findById(request.getPaymentMethodId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Payment Method not found"));
+        }
+
+        statement.setStatus(BillingStatementStatus.PAID);
+        statement.setPaidAt(LocalDateTime.now());
+        statement.setTransactionReference(request.getTransactionReference());
+        statement.setNote(request.getNote());
+        statement.setPaymentMethod(method);
+
+        int updatedCount = invoiceRepository.bulkMarkAsPaid(id, InvoiceStatus.PAID);
+        log.info("Updated {} invoices to PAID for statement {}", updatedCount, id);
+
+        return PaymentStatementResponse.builder()
+                .statementId(statement.getStatementId())
+                .status(statement.getStatus().name())
+                .paidAt(statement.getPaidAt())
+                .transactionReference(statement.getTransactionReference())
                 .build();
     }
 }

@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import com.swp.ckms.enums.ProductionPlanStatus;
 import java.time.LocalDateTime;
 
 @Entity
@@ -34,6 +35,10 @@ public class ProductionPlan {
 
     private LocalDateTime createdAt;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status; // PLANNED, IN_PRODUCTION, FINISHED, CANCELLED
+    private ProductionPlanStatus status;
+
+    @Version
+    private Long version;
 }
