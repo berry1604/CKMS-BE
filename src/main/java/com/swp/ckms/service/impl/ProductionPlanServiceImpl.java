@@ -35,6 +35,8 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
     private final StoreOrderRepository storeOrderRepository;
     private final UserRepository userRepository;
     private final ProductionPlanMaterialRequirementRepository materialRequirementRepository;
+    private final com.swp.ckms.repository.KitchenWarehouseRepository warehouseRepository;
+    private final com.swp.ckms.repository.KitchenStockItemRepository kitchenStockItemRepository;
 
     @Override
     public ProductionPlanResponse createProductionPlan(ProductionPlanRequest request) {
@@ -100,6 +102,98 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                 .status(savedPlan.getStatus().name())
                 .createdAt(savedPlan.getCreatedAt())
                 .coordinatorUserId(currentUser.getUserId())
+                .build();
+    }
+
+    @Override
+    public ProductionPlanResponse checkAndReadyPlan(Long planId) {
+        // Step 1: Fetch ProductionPlan
+        ProductionPlan plan = productionPlanRepository.findById(planId)
+                .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found with id: " + planId));
+
+        // Step 2: Validate status == PLANNED
+        if (plan.getStatus() != ProductionPlanStatus.PLANNED) {
+            throw new OrderAssignmentConflictException("Production Plan is not in PLANNED state. Current state: " + plan.getStatus());
+        }
+
+        // Validate Kitchen: User context current kitchen MUST match Plan's kitchen (or Admin)
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null) {
+            throw new AccessDeniedException("User context not found or not authenticated");
+        }
+        User currentUser = userRepository.findById(ctx.getUserId())
+                .orElseThrow(() -> new AccessDeniedException("User not found in system"));
+        
+        // Checking Coordinator / Admin logic: either user is Admin or User's kitchen == Plan's kitchen
+        boolean isAdmin = currentUser.getRole() != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName());
+        if (!isAdmin) {
+            if (currentUser.getKitchen() == null || !currentUser.getKitchen().getKitchenId().equals(plan.getKitchen().getKitchenId())) {
+                throw new AccessDeniedException("You do not have permission to modify this Production Plan.");
+            }
+        }
+
+        // Step 4: Fetch default warehouse of the kitchen
+        com.swp.ckms.entity.KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("No default warehouse found for Kitchen ID: " + plan.getKitchen().getKitchenId()));
+
+        // Step 5: Load List ProductionPlanMaterialRequirement (Snapshot)
+        List<ProductionPlanMaterialRequirement> requirements = materialRequirementRepository.findByPlan_PlanId(planId);
+        if (requirements.isEmpty()) {
+            throw new OrderAssignmentConflictException("Plan has no material requirements. Cannot be ready to produce.");
+        }
+
+        // Step 6: Extract list of materialId
+        List<Long> materialIds = requirements.stream()
+                .map(req -> req.getMaterial().getId())
+                .collect(java.util.stream.Collectors.toList());
+
+        // Step 7: Lấy Map Stock
+        List<com.swp.ckms.repository.projection.MaterialStockProjection> availableStocks = kitchenStockItemRepository.getAvailableStockForMaterials(warehouse.getWarehouseId(), materialIds);
+        java.util.Map<Long, java.math.BigDecimal> stockMap = availableStocks.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        com.swp.ckms.repository.projection.MaterialStockProjection::getMaterialId,
+                        com.swp.ckms.repository.projection.MaterialStockProjection::getTotalQuantity,
+                        java.math.BigDecimal::add // In case of duplicates, though logic shouldn't produce them
+                ));
+
+        // Step 8 & 9: Lặp và so sánh từng material
+        List<com.swp.ckms.dto.response.MissingMaterialResponse> missingMaterials = new java.util.ArrayList<>();
+        
+        for (ProductionPlanMaterialRequirement req : requirements) {
+            Long matId = req.getMaterial().getId();
+            java.math.BigDecimal requiredQty = req.getRequiredQuantity();
+            java.math.BigDecimal availableQty = stockMap.getOrDefault(matId, java.math.BigDecimal.ZERO);
+            
+            if (availableQty.compareTo(requiredQty) < 0) {
+                missingMaterials.add(com.swp.ckms.dto.response.MissingMaterialResponse.builder()
+                        .materialId(matId)
+                        .materialName(req.getMaterial().getName())
+                        .requiredQuantity(requiredQty)
+                        .availableQuantity(availableQty)
+                        .missingQuantity(requiredQty.subtract(availableQty))
+                        .build());
+            }
+        }
+
+        if (!missingMaterials.isEmpty()) {
+            throw new com.swp.ckms.exception.business.InsufficientMaterialException("Not enough materials to ready the Production Plan.", missingMaterials);
+        }
+
+        // Step 10: Cập nhật plan.setStatus(READY_TO_PRODUCE)
+        plan.setStatus(ProductionPlanStatus.READY_TO_PRODUCE);
+        productionPlanRepository.save(plan);
+
+        // Step 11: Return response
+        return ProductionPlanResponse.builder()
+                .planId(plan.getPlanId())
+                .planName(plan.getPlanName())
+                .batchCode(plan.getBatchCode())
+                .kitchenId(plan.getKitchen().getKitchenId())
+                .status(plan.getStatus().name())
+                .createdAt(plan.getCreatedAt())
+                .coordinatorUserId(plan.getCoordinatorUser().getUserId())
                 .build();
     }
 }

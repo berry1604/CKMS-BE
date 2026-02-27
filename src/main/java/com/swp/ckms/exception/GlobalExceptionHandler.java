@@ -15,7 +15,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import com.swp.ckms.dto.response.MissingMaterialResponse;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -60,6 +62,17 @@ public class GlobalExceptionHandler {
     }
 
     // --- Business Exceptions ---
+    @ExceptionHandler(InsufficientMaterialException.class)
+    public ResponseEntity<ApiResponse<List<MissingMaterialResponse>>> handleInsufficientMaterial(InsufficientMaterialException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.<List<MissingMaterialResponse>>builder()
+                        .status(HttpStatus.CONFLICT.value())
+                        .message(ex.getMessage())
+                        .data(ex.getMissingMaterials())
+                        .timestamp(java.time.LocalDateTime.now())
+                        .build());
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(ResourceNotFoundException ex) {
         return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());

@@ -5,4 +5,5 @@ import com.swp.ckms.dto.response.ProductionPlanResponse;
 
 public interface ProductionPlanService {
     ProductionPlanResponse createProductionPlan(ProductionPlanRequest request);
+    ProductionPlanResponse checkAndReadyPlan(Long planId);
 }
