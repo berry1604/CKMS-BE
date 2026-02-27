@@ -107,10 +107,10 @@ public class DataSeeder implements CommandLineRunner {
 
     private Role seedRole(String roleName, Set<Privilege> privileges) {
         return roleRepository.findByRoleName(roleName)
-                .map(role -> {
-                    role.setPrivileges(privileges);
-                    return roleRepository.save(role);
-                })
+                // .map(role -> {
+                //     role.setPrivileges(privileges);
+                //     return roleRepository.save(role);
+                // })
                 .orElseGet(() -> roleRepository.save(Role.builder()
                         .roleName(roleName)
                         .privileges(privileges)
