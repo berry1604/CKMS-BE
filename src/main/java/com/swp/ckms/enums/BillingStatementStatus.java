@@ -1,7 +1,10 @@
 package com.swp.ckms.enums;
 
 public enum BillingStatementStatus {
-    UNPAID,
+    DRAFT,
+    ISSUED,
+    OVERDUE,
     PAID,
+    CANCELLED
 
 }

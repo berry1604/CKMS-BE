@@ -6,6 +6,7 @@ import com.swp.ckms.enums.InvoiceStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -32,4 +33,16 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
         ORDER BY i.issuedAt ASC
     """)
     List<InvoiceDetailResponse> findInvoiceDetailsByStatementId(@Param("statementId") Long statementId);
+
+    @Modifying
+    @Query("""
+        UPDATE Invoice i
+        SET i.status = :status
+        WHERE i.statement.statementId = :statementId
+          AND i.status = 'IN_STATEMENT'
+    """)
+    int bulkMarkAsPaid(
+        @Param("statementId") Long statementId,
+        @Param("status") InvoiceStatus status
+    );
 }

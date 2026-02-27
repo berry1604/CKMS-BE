@@ -49,4 +49,12 @@ public class BillingStatement {
     private LocalDateTime issuedAt;
 
     private LocalDateTime paidAt;
+
+    private String transactionReference;
+
+    @Column(columnDefinition = "TEXT")
+    private String note;
+
+    @Version
+    private Long version;
 }
