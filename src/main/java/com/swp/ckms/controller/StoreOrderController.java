@@ -22,14 +22,14 @@ public class StoreOrderController {
     private final StoreOrderService storeOrderService;
 
     @PostMapping
-    @PreAuthorize("hasAuthority('CREATE_STORE_ORDER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<StoreOrderResponse> createOrder(@Valid @RequestBody StoreOrderRequest request, Authentication authentication) {
         StoreOrderResponse response = storeOrderService.createOrder(request, authentication.getName());
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/my")
-    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<StoreOrderResponse>> getMyOrders(
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(defaultValue = "0") int page,
@@ -48,7 +48,7 @@ public class StoreOrderController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<StoreOrderResponse>> getAllOrders(
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(defaultValue = "0") int page,
@@ -69,14 +69,14 @@ public class StoreOrderController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<StoreOrderResponse> getOrderById(@PathVariable Long id) {
         StoreOrderResponse response = storeOrderService.getOrderById(id);
         return ResponseEntity.ok(response);
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAnyAuthority('UPDATE_STORE_ORDER', 'ORDER_APPROVE')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<StoreOrderResponse> updateOrderStatus(
             @PathVariable Long id,
             @RequestBody java.util.Map<String, String> body) {

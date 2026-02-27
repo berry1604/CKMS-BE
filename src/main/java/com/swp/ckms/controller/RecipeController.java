@@ -39,7 +39,7 @@ public class RecipeController {
     }
 
     @GetMapping("/product/{productId}/active")
-    @PreAuthorize("hasAnyAuthority('VIEW_RECIPE', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_COORDINATOR', 'ROLE_STAFF')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<RecipeResponse>> getActiveRecipe(@PathVariable Long productId) {
         RecipeResponse response = recipeService.getActiveRecipeByProductId(productId);
         

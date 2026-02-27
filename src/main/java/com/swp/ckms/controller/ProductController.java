@@ -25,7 +25,7 @@ public class ProductController {
     private final ProductService productService;
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('VIEW_PRODUCT', 'ROLE_MANAGER', 'ROLE_STAFF', 'ROLE_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Page<ProductResponse>>> getAllProducts(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Long categoryId,
@@ -40,7 +40,7 @@ public class ProductController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('VIEW_PRODUCT', 'ROLE_MANAGER', 'ROLE_STAFF', 'ROLE_ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> getProductById(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.<ProductResponse>builder()
                 .status(HttpStatus.OK.value())
@@ -51,7 +51,7 @@ public class ProductController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyAuthority('CREATE_PRODUCT', 'ROLE_MANAGER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> createProduct(@Valid @RequestBody ProductRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<ProductResponse>builder()
                 .status(HttpStatus.CREATED.value())
@@ -62,7 +62,7 @@ public class ProductController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('UPDATE_PRODUCT', 'ROLE_MANAGER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<ProductResponse>> updateProduct(
             @PathVariable Long id,
             @Valid @RequestBody ProductRequest request) {
@@ -75,7 +75,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('DELETE_PRODUCT', 'ROLE_MANAGER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteProduct(@PathVariable Long id) {
         productService.deleteProduct(id);
         return ResponseEntity.ok(ApiResponse.<Void>builder()
