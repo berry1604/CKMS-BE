@@ -114,8 +114,10 @@ public class AuthServiceImpl implements AuthService {
     private String resolveScope(String roleName) {
         if (roleName == null) return "USER";
         return switch (roleName.toUpperCase()) {
-            case "ADMIN", "MANAGER", "COORDINATOR" -> "SYSTEM";
-            case "STORE_OWNER", "STAFF" -> "STORE";
+            case "ADMIN", "COORDINATOR" -> "SYSTEM";
+            case "MANAGER" -> "SYSTEM"; // Manager có thể xem báo cáo tổng hợp
+            case "STORE_STAFF" -> "STORE";
+            case "KITCHEN_STAFF" -> "KITCHEN";
             default -> "USER";
         };
     }
