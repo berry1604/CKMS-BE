@@ -66,28 +66,43 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedUsersAndRoles(Set<Privilege> allPrivileges) {
-        // 1. ADMIN - All privileges
+        // 1. ADMIN - Toàn quyền hệ thống & RBAC
         Role adminRole = seedRole("ADMIN", allPrivileges);
         seedUser("admin", "admin@ckms.com", "admin", "System Administrator", adminRole, null);
 
-        // 2. COORDINATOR - Order processing & Production planning
+        // 2. MANAGER - Giám sát vận hành, Catalog, Recipe & Reports
+        Set<String> managerCodes = new HashSet<>(Arrays.asList(
+                "MANAGE_CATALOG", "VIEW_CATEGORY", "CREATE_CATEGORY", "UPDATE_CATEGORY",
+                "VIEW_MATERIAL", "CREATE_MATERIAL", "UPDATE_MATERIAL",
+                "VIEW_PRODUCT", "CREATE_PRODUCT", "UPDATE_PRODUCT",
+                "VIEW_RECIPE", "CREATE_RECIPE", "UPDATE_RECIPE",
+                "VIEW_KITCHEN_INVENTORY", "VIEW_STORE_INVENTORY",
+                "VIEW_BILLING", "VIEW_INVOICE", "VIEW_REPORTS", "VIEW_DASHBOARD"
+        ));
+        Set<Privilege> managerPrivileges = allPrivileges.stream()
+                .filter(p -> managerCodes.contains(p.getCode()))
+                .collect(Collectors.toSet());
+        Role managerRole = seedRole("MANAGER", managerPrivileges);
+        seedUser("manager", "manager@ckms.com", "manager", "Operation Manager", managerRole, null);
+
+        // 3. COORDINATOR - Planning: Duyệt đơn, Lập kế hoạch, Giao hàng
         Set<String> coordinatorCodes = new HashSet<>(Arrays.asList(
-                "VIEW_STORE_ORDER", "UPDATE_STORE_ORDER",
-                "CREATE_PRODUCTION_PLAN", "VIEW_PRODUCTION_PLAN", "UPDATE_PRODUCTION_PLAN",
+                "VIEW_STORE_ORDER", "APPROVE_STORE_ORDER", "UPDATE_STORE_ORDER",
+                "ORGANIZE_PRODUCTION", "CREATE_PRODUCTION_PLAN", "VIEW_PRODUCTION_PLAN", "UPDATE_PRODUCTION_PLAN",
                 "CREATE_SHIPMENT", "VIEW_SHIPMENT",
-                "VIEW_INVOICE", "VIEW_KITCHEN_INVENTORY", "VIEW_DASHBOARD"
+                "VIEW_INVOICE", "VIEW_BILLING", "VIEW_KITCHEN_INVENTORY", "VIEW_DASHBOARD"
         ));
         Set<Privilege> coordinatorPrivileges = allPrivileges.stream()
                 .filter(p -> coordinatorCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role coordinatorRole = seedRole("COORDINATOR", coordinatorPrivileges);
-        seedUser("coordinator", "coordinator@ckms.com", "coordinator", "Order Coordinator", coordinatorRole, null);
+        seedUser("coordinator", "coordinator@ckms.com", "coordinator", "Supply Coordinator", coordinatorRole, null);
 
-        // 3. KITCHEN_STAFF - Execution & Inventory Management
+        // 4. KITCHEN_STAFF - Execution: Sản xuất & Kho bếp
         Set<String> kitchenCodes = new HashSet<>(Arrays.asList(
-                "VIEW_PRODUCTION_PLAN", "UPDATE_PRODUCTION_PLAN",
-                "VIEW_KITCHEN_INVENTORY", "UPDATE_KITCHEN_INVENTORY",
-                "VIEW_SHIPMENT"
+                "VIEW_PRODUCTION_PLAN", "EXECUTE_PRODUCTION", "UPDATE_PRODUCTION_PLAN",
+                "VIEW_KITCHEN_INVENTORY", "UPDATE_KITCHEN_INVENTORY", "ADJUST_KITCHEN_STOCK",
+                "PREPARE_SHIPMENT", "VIEW_SHIPMENT"
         ));
         Set<Privilege> kitchenPrivileges = allPrivileges.stream()
                 .filter(p -> kitchenCodes.contains(p.getCode()))
@@ -95,30 +110,20 @@ public class DataSeeder implements CommandLineRunner {
         Role kitchenStaffRole = seedRole("KITCHEN_STAFF", kitchenPrivileges);
         seedUser("kitchenstaff", "kitchen@ckms.com", "staff", "Kitchen Execution Staff", kitchenStaffRole, null);
 
-        // 4. STORE_MANAGER - Ordering & Store Management
-        Set<String> managerCodes = new HashSet<>(Arrays.asList(
-                "CREATE_STORE_ORDER", "VIEW_STORE_ORDER",
-                "VIEW_STORE_INVENTORY", "CONFIRM_SHIPMENT",
-                "VIEW_BILLING", "VIEW_PRODUCT"
-        ));
-        Set<Privilege> managerPrivileges = allPrivileges.stream()
-                .filter(p -> managerCodes.contains(p.getCode()))
-                .collect(Collectors.toSet());
-        Role managerRole = seedRole("STORE_MANAGER", managerPrivileges);
-        
-        FranchiseStore store = franchiseStoreRepository.findById(1L).orElse(null);
-        seedUser("storemanager", "manager@ckms.com", "manager", "Store Manager", managerRole, store);
-
-        // 5. STORE_STAFF - Inventory & Shipment Confirmation
+        // 5. STORE_STAFF - Execution: Đặt hàng & Kho cửa hàng
         Set<String> storeStaffCodes = new HashSet<>(Arrays.asList(
-                "VIEW_STORE_ORDER", "VIEW_STORE_INVENTORY",
-                "CONFIRM_SHIPMENT", "VIEW_PRODUCT"
+                "CREATE_STORE_ORDER", "VIEW_STORE_ORDER", "UPDATE_STORE_ORDER",
+                "VIEW_STORE_INVENTORY", "UPDATE_STORE_INVENTORY",
+                "CONFIRM_SHIPMENT", "VIEW_SHIPMENT",
+                "VIEW_PRODUCT", "VIEW_BILLING"
         ));
         Set<Privilege> storeStaffPrivileges = allPrivileges.stream()
                 .filter(p -> storeStaffCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role storeStaffRole = seedRole("STORE_STAFF", storeStaffPrivileges);
-        seedUser("storestaff", "storestaff@ckms.com", "staff", "Store Receipt Staff", storeStaffRole, store);
+        
+        FranchiseStore store = franchiseStoreRepository.findById(1L).orElse(null);
+        seedUser("storestaff", "storestaff@ckms.com", "staff", "Store Staff", storeStaffRole, store);
     }
 
     private Role seedRole(String roleName, Set<Privilege> privileges) {

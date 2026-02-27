@@ -189,9 +189,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
         }
 
         Long finalStoreIdFilter = storeId;
-        boolean isStaffStore = userContext.getRoles().contains("ROLE_STAFF_STORE");
-
-        if (isStaffStore) {
+        if ("STORE".equalsIgnoreCase(userContext.getScope())) {
             Long userStoreId = userContext.getStoreId();
             if (userStoreId == null) {
                 throw new ForbiddenException("Staff does not belong to any store");
@@ -214,34 +212,35 @@ public class BillingStatementServiceImpl implements BillingStatementService {
             throw new ForbiddenException("Authentication required");
         }
 
-        boolean isStaffStore = userContext.getRoles().contains("ROLE_STAFF_STORE");
-        BillingStatement statement;
-
-        if (isStaffStore) {
+        BillingStatement billingStatement;
+        if ("STORE".equalsIgnoreCase(userContext.getScope())) {
             Long userStoreId = userContext.getStoreId();
-            // Fast fail with 404 to avoid ID probing
-            statement = billingStatementRepository.findByStatementIdAndStore_StoreId(id, userStoreId)
+            billingStatement = billingStatementRepository.findByStatementIdAndStore_StoreId(id, userStoreId)
                     .orElseThrow(() -> new ResourceNotFoundException("Billing statement not found or you don't have permission"));
         } else {
-            statement = billingStatementRepository.findById(id)
+            billingStatement = billingStatementRepository.findById(id)
                     .orElseThrow(() -> new ResourceNotFoundException("Billing statement not found"));
         }
 
         List<InvoiceDetailResponse> invoiceDetails = invoiceRepository.findInvoiceDetailsByStatementId(id);
 
+        if (billingStatement.getStore() == null) {
+            throw new ResourceNotFoundException("Store not associated with this billing statement");
+        }
+
         StoreSimpleResponse storeSimple = StoreSimpleResponse.builder()
-                .id(statement.getStore().getStoreId())
-                .name(statement.getStore().getName())
+                .id(billingStatement.getStore().getStoreId())
+                .name(billingStatement.getStore().getName())
                 .build();
 
         return BillingStatementDetailResponse.builder()
-                .statementId(statement.getStatementId())
+                .statementId(billingStatement.getStatementId())
                 .store(storeSimple)
-                .periodStart(statement.getCycleStart())
-                .periodEnd(statement.getCycleEnd())
-                .totalAmount(statement.getTotalAmount())
-                .status(statement.getStatus().name())
-                .paidAt(statement.getPaidAt())
+                .periodStart(billingStatement.getCycleStart())
+                .periodEnd(billingStatement.getCycleEnd())
+                .totalAmount(billingStatement.getTotalAmount())
+                .status(billingStatement.getStatus().name())
+                .paidAt(billingStatement.getPaidAt())
                 .invoices(invoiceDetails)
                 .build();
     }
