@@ -7,4 +7,5 @@ public interface ProductionPlanService {
     ProductionPlanResponse createProductionPlan(ProductionPlanRequest request);
     ProductionPlanResponse checkAndReadyPlan(Long planId);
     ProductionPlanResponse startProductionPlan(Long planId, Long requestVersion);
+    ProductionPlanResponse finishProductionPlan(Long planId, Long requestVersion);
 }

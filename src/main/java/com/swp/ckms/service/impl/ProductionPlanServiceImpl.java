@@ -335,4 +335,74 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                 .coordinatorUserId(plan.getCoordinatorUser().getUserId())
                 .build();
     }
+
+    @Override
+    public ProductionPlanResponse finishProductionPlan(Long planId, Long requestVersion) {
+        // Step 1: Security & Identity validation
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null) {
+            throw new AccessDeniedException("User context not found or not authenticated");
+        }
+        User currentUser = userRepository.findById(ctx.getUserId())
+                .orElseThrow(() -> new AccessDeniedException("User not found in system"));
+
+        boolean isAdmin = currentUser.getRole() != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName());
+        ProductionPlan plan;
+
+        // Step 2: Fetch ProductionPlan with Kitchen Check
+        if (!isAdmin) {
+            if (currentUser.getKitchen() == null) {
+                throw new AccessDeniedException("You do not have permission to modify this Production Plan.");
+            }
+            plan = productionPlanRepository.findByPlanIdAndKitchen_KitchenId(planId, currentUser.getKitchen().getKitchenId())
+                    .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found or you don't have access. ID: " + planId));
+        } else {
+             plan = productionPlanRepository.findById(planId)
+                    .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found with id: " + planId));
+        }
+
+        // Step 3: Idempotency Check (CHECK FIRST)
+        if (plan.getStatus() == ProductionPlanStatus.FINISHED) {
+             return ProductionPlanResponse.builder()
+                .planId(plan.getPlanId())
+                .planName(plan.getPlanName())
+                .batchCode(plan.getBatchCode())
+                .kitchenId(plan.getKitchen().getKitchenId())
+                .status(plan.getStatus().name())
+                .createdAt(plan.getCreatedAt())
+                .coordinatorUserId(plan.getCoordinatorUser().getUserId())
+                .build();
+        }
+
+        // Step 4: State Guard
+        if (plan.getStatus() != ProductionPlanStatus.IN_PRODUCTION) {
+            throw new OrderAssignmentConflictException("Production Plan is not in IN_PRODUCTION state. Current state: " + plan.getStatus());
+        }
+
+        // Step 5: Transition Plan (Let Hibernate handle @Version)
+        if (requestVersion != null) {
+            // OPTIONAL: even though Hibernate checks on flush, setting it here helps fail-fast if necessary, 
+            // but we'll stick to the "no manual override" rule if requestVersion is just a hint.
+            // Actually, if we don't set it, we rely on the object in session's version.
+            // If the user wants to enforce "Finish ONLY if you saw version X", we should set it.
+            plan.setVersion(requestVersion);
+        }
+        
+        plan.setStatus(ProductionPlanStatus.FINISHED);
+        productionPlanRepository.save(plan);
+
+        // Step 6: Bulk Update Store Orders (Only GROUPED -> READY)
+        storeOrderRepository.updateOrderStatusToReadyByPlanId(planId);
+
+        // Step 7: Return response
+        return ProductionPlanResponse.builder()
+                .planId(plan.getPlanId())
+                .planName(plan.getPlanName())
+                .batchCode(plan.getBatchCode())
+                .kitchenId(plan.getKitchen().getKitchenId())
+                .status(plan.getStatus().name())
+                .createdAt(plan.getCreatedAt())
+                .coordinatorUserId(plan.getCoordinatorUser().getUserId())
+                .build();
+    }
 }
