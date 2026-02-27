@@ -33,4 +33,13 @@ public class ProductionPlanController {
         ProductionPlanResponse response = productionPlanService.checkAndReadyPlan(id);
         return ResponseEntity.ok(response);
     }
+    
+    @PostMapping("/{id}/start")
+    @PreAuthorize("hasRole('COORDINATOR') or hasRole('ADMIN')")
+    public ResponseEntity<ProductionPlanResponse> startProductionPlan(
+            @PathVariable Long id,
+            @RequestHeader(value = "If-Match", required = false) Long version) {
+        ProductionPlanResponse response = productionPlanService.startProductionPlan(id, version);
+        return ResponseEntity.ok(response);
+    }
 }

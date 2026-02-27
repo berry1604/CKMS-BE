@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface ProductionPlanRepository extends JpaRepository<ProductionPlan, Long> {
+    java.util.Optional<ProductionPlan> findByPlanIdAndKitchen_KitchenId(Long planId, Long kitchenId);
 }
