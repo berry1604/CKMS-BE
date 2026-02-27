@@ -16,14 +16,14 @@ public class UserCreatedListener {
 
     private final EmailService emailService;
 
-    @Value("${app.base-url:http://localhost:8080}")
-    private String baseUrl;
+    @Value("${app.frontend.verify-url:http://localhost:5173/verify-email}")
+    private String verifyUrl;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleUserCreatedEvent(UserCreatedEvent event) {
         log.info("Handling UserCreatedEvent for user: {}", event.getUser().getUsername());
         
-        String verificationLink = baseUrl + "/api/v1/auth/verify?userId=" + event.getUser().getUserId() + "&token=" + event.getRawToken();
+        String verificationLink = verifyUrl + "?userId=" + event.getUser().getUserId() + "&token=" + event.getRawToken();
         
         emailService.sendVerificationEmail(
                 event.getUser().getEmail(), 
