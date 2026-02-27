@@ -1,6 +1,8 @@
 package com.swp.ckms.controller;
 
+import com.swp.ckms.dto.request.BatchBillingStatementRequest;
 import com.swp.ckms.dto.response.ApiResponse;
+import com.swp.ckms.dto.response.BatchBillingStatementResponse;
 import com.swp.ckms.dto.response.BillingStatementResponse;
 import com.swp.ckms.service.BillingStatementService;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,22 @@ public class BillingStatementController {
                 .body(ApiResponse.<BillingStatementResponse>builder()
                         .status(HttpStatus.CREATED.value())
                         .message("Billing statement generated successfully")
+                        .data(response)
+                        .timestamp(java.time.LocalDateTime.now())
+                        .build());
+    }
+
+    @PostMapping("/generate/batch")
+    @PreAuthorize("hasRole('SYSTEM')")
+    public ResponseEntity<ApiResponse<BatchBillingStatementResponse>> generateBatchStatements(
+            @RequestBody BatchBillingStatementRequest request) {
+
+        BatchBillingStatementResponse response = billingStatementService.generateBatchStatements(request);
+
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(ApiResponse.<BatchBillingStatementResponse>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("Batch billing statements execution completed")
                         .data(response)
                         .timestamp(java.time.LocalDateTime.now())
                         .build());

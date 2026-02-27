@@ -1,5 +1,6 @@
 package com.swp.ckms.entity;
 
+import com.swp.ckms.enums.BillingStatementStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -36,8 +37,9 @@ public class BillingStatement {
 
     private BigDecimal totalAmount;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status; // UNPAID, PAID, OVERDUE
+    private BillingStatementStatus status;
 
     private LocalDateTime paidAt;
 }

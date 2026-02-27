@@ -1,9 +1,12 @@
 package com.swp.ckms.service.impl;
 
+import com.swp.ckms.dto.request.BatchBillingStatementRequest;
+import com.swp.ckms.dto.response.BatchBillingStatementResponse;
 import com.swp.ckms.dto.response.BillingStatementResponse;
 import com.swp.ckms.entity.BillingStatement;
 import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.Invoice;
+import com.swp.ckms.enums.BillingStatementStatus;
 import com.swp.ckms.enums.InvoiceStatus;
 import com.swp.ckms.exception.business.DuplicateResourceException;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
@@ -13,6 +16,7 @@ import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.InvoiceRepository;
 import com.swp.ckms.service.BillingStatementService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +29,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class BillingStatementServiceImpl implements BillingStatementService {
 
     private final BillingStatementRepository billingStatementRepository;
@@ -61,7 +66,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .cycleStart(periodStart)
                 .cycleEnd(periodEnd)
                 .totalAmount(totalAmount)
-                .status("UNPAID")
+                .status(BillingStatementStatus.UNPAID)
                 .build();
 
         BillingStatement savedStatement = billingStatementRepository.save(statement);
@@ -84,8 +89,80 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .periodStart(periodStart)
                 .periodEnd(periodEnd)
                 .totalAmount(totalAmount)
-                .status(savedStatement.getStatus())
+                .status(savedStatement.getStatus().name())
                 .invoiceCount(invoices.size())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public BatchBillingStatementResponse generateBatchStatements(BatchBillingStatementRequest request) {
+        LocalDate periodStart = request.getPeriodStart();
+        LocalDate periodEnd = request.getPeriodEnd();
+        
+        if (periodStart.isAfter(periodEnd)) {
+            throw new InvalidRequestException("periodStart must be before or equal to periodEnd");
+        }
+
+        List<FranchiseStore> allStores = franchiseStoreRepository.findAll();
+        
+        int totalStoresProcessed = allStores.size();
+        int totalStatementsCreated = 0;
+        int storesSkippedNoInvoices = 0;
+
+        for (FranchiseStore store : allStores) {
+            Long storeId = store.getStoreId();
+            try {
+                // Determine if statement already exists. Skip if true to avoid breaking the batch.
+                if (billingStatementRepository.existsOverlappingStatement(storeId, periodStart, periodEnd)) {
+                    log.info("Batch: Skipping store {} due to overlapping statement in period.", storeId);
+                    continue;
+                }
+
+                LocalDateTime startDateTime = periodStart.atStartOfDay();
+                LocalDateTime endDateTime = periodEnd.atTime(LocalTime.MAX);
+
+                // Pesimistic lock is handled by InvoiceRepository method
+                List<Invoice> invoices = invoiceRepository.findByOrder_Store_StoreIdAndStatusAndIssuedAtBetween(
+                        storeId, InvoiceStatus.PENDING, startDateTime, endDateTime);
+
+                if (invoices.isEmpty()) {
+                    storesSkippedNoInvoices++;
+                    continue;
+                }
+
+                BigDecimal totalAmount = invoices.stream()
+                        .map(Invoice::getAmount)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BillingStatement statement = BillingStatement.builder()
+                        .store(store)
+                        .cycleStart(periodStart)
+                        .cycleEnd(periodEnd)
+                        .totalAmount(totalAmount)
+                        .status(BillingStatementStatus.UNPAID)
+                        .build();
+
+                BillingStatement savedStatement = billingStatementRepository.save(statement);
+
+                for (Invoice invoice : invoices) {
+                    invoice.setStatus(InvoiceStatus.IN_STATEMENT);
+                    invoice.setStatement(savedStatement);
+                }
+                invoiceRepository.saveAll(invoices);
+                
+                totalStatementsCreated++;
+
+            } catch (Exception e) {
+                log.error("Batch error processing storeId {}: {}", storeId, e.getMessage(), e);
+            }
+        }
+
+        return BatchBillingStatementResponse.builder()
+                .totalStoresProcessed(totalStoresProcessed)
+                .totalStatementsCreated(totalStatementsCreated)
+                .storesSkippedNoInvoices(storesSkippedNoInvoices)
+                .status("COMPLETED")
                 .build();
     }
 }
