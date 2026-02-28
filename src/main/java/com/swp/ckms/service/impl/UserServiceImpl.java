@@ -4,6 +4,7 @@ import com.swp.ckms.dto.request.CreateUserRequest;
 import com.swp.ckms.dto.response.CreateUserResponse;
 import com.swp.ckms.dto.request.ForgotPasswordRequest;
 import com.swp.ckms.dto.request.ResetPasswordRequest;
+import com.swp.ckms.dto.response.UserResponse;
 import com.swp.ckms.entity.User;
 import com.swp.ckms.dto.request.ActivateAccountRequest;
 import com.swp.ckms.enums.UserStatus;
@@ -13,10 +14,16 @@ import com.swp.ckms.repository.RoleRepository;
 import com.swp.ckms.repository.UserRepository;
 import com.swp.ckms.service.EmailService;
 import com.swp.ckms.service.UserService;
+import com.swp.ckms.specification.UserSpecification;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -190,5 +197,70 @@ public class UserServiceImpl implements UserService {
         user.setVerificationTokenExpiresAt(null);
 
         userRepository.save(user);
+    }
+
+    @Override
+    public Page<UserResponse> getUsers(
+            int page,
+            int size,
+            String role,
+            String status,
+            String search
+    ) {
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by("userId").descending()
+        );
+
+        Specification<User> specification =
+                UserSpecification.filterUsers(role, status, search);
+
+        Page<User> users =
+                userRepository.findAll(specification, pageable);
+
+        return users.map(this::mapToResponse);
+    }
+
+    @Override
+    public UserResponse getUserByUsernameOrEmail(String username, String email) {
+
+        boolean hasUsername = username != null && !username.isBlank();
+        boolean hasEmail = email != null && !email.isBlank();
+
+        if (hasUsername == hasEmail) {
+            throw new IllegalArgumentException(
+                    "Provide either username or email"
+            );
+        }
+
+        User user;
+
+        if (hasUsername) {
+            user = userRepository.findByUsername(username)
+                    .orElseThrow(() ->
+                            new RuntimeException("User not found"));
+        } else {
+            user = userRepository.findByEmail(email)
+                    .orElseThrow(() ->
+                            new RuntimeException("User not found"));
+        }
+
+        return mapToResponse(user);
+    }
+
+    private UserResponse mapToResponse(User user) {
+        return UserResponse.builder()
+                .userId(user.getUserId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .role(user.getRole() != null
+                        ? user.getRole().getRoleName()
+                        : null)
+                .status(user.getStatus().name())
+                .isActive(user.getIsActive())
+                .build();
     }
 }
