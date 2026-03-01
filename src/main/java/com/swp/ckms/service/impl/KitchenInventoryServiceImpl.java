@@ -24,6 +24,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import com.swp.ckms.security.SecurityUtils;
+import com.swp.ckms.security.UserContext;
+
 @Service
 @RequiredArgsConstructor
 public class KitchenInventoryServiceImpl implements KitchenInventoryService {
@@ -132,8 +135,20 @@ public class KitchenInventoryServiceImpl implements KitchenInventoryService {
     // --- Private Helper Methods ---
 
     private KitchenWarehouse verifyWarehouseExists(Long warehouseId) {
-        return warehouseRepository.findById(warehouseId)
+        if (warehouseId == null) {
+            throw new ResourceNotFoundException("Warehouse ID cannot be null");
+        }
+        KitchenWarehouse warehouse = warehouseRepository.findById(warehouseId)
                 .orElseThrow(() -> new ResourceNotFoundException("Kitchen Warehouse not found: " + warehouseId));
+        
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx != null && "KITCHEN".equalsIgnoreCase(ctx.getScope())) {
+            if (ctx.getCoordinatorId() != null && !warehouse.getKitchen().getKitchenId().equals(ctx.getCoordinatorId())) {
+                throw new org.springframework.security.access.AccessDeniedException("Access denied to this warehouse");
+            }
+        }
+        
+        return warehouse;
     }
 
     private ProductionPlan getProductionPlanIfPresent(Long planId) {

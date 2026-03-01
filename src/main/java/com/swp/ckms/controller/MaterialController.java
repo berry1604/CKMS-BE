@@ -22,7 +22,7 @@ public class MaterialController {
     private final MaterialService materialService;
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('VIEW_MATERIAL')")
     public ResponseEntity<ApiResponse<List<MaterialResponse>>> getAllMaterials() {
         return ResponseEntity.ok(ApiResponse.<List<MaterialResponse>>builder()
                 .status(HttpStatus.OK.value())
@@ -33,7 +33,7 @@ public class MaterialController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('MANAGE_CATALOG')")
     public ResponseEntity<ApiResponse<MaterialResponse>> createMaterial(@Valid @RequestBody MaterialRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.<MaterialResponse>builder()
                 .status(HttpStatus.CREATED.value())
@@ -44,7 +44,7 @@ public class MaterialController {
     }
 
     @PatchMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('MANAGE_CATALOG')")
     public ResponseEntity<ApiResponse<MaterialResponse>> updateMaterial(
             @PathVariable Long id,
             @Valid @RequestBody MaterialRequest request) {

@@ -19,7 +19,7 @@ public class ProductionPlanController {
     private final ProductionPlanService productionPlanService;
 
     @PostMapping
-    @PreAuthorize("hasRole('COORDINATOR') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION')")
     public ResponseEntity<ProductionPlanResponse> createProductionPlan(
             @Valid @RequestBody ProductionPlanRequest request) {
         
@@ -28,14 +28,14 @@ public class ProductionPlanController {
     }
 
     @PutMapping("/{id}/ready")
-    @PreAuthorize("hasRole('COORDINATOR') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION')")
     public ResponseEntity<ProductionPlanResponse> readyProductionPlan(@PathVariable Long id) {
         ProductionPlanResponse response = productionPlanService.checkAndReadyPlan(id);
         return ResponseEntity.ok(response);
     }
     
     @PostMapping("/{id}/start")
-    @PreAuthorize("hasRole('COORDINATOR') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('EXECUTE_PRODUCTION')")
     public ResponseEntity<ProductionPlanResponse> startProductionPlan(
             @PathVariable Long id,
             @RequestHeader(value = "If-Match", required = false) Long version) {
@@ -44,7 +44,7 @@ public class ProductionPlanController {
     }
 
     @PostMapping("/{id}/finish")
-    @PreAuthorize("hasRole('COORDINATOR') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('EXECUTE_PRODUCTION')")
     public ResponseEntity<ProductionPlanResponse> finishProductionPlan(
             @PathVariable Long id,
             @RequestHeader(value = "If-Match", required = false) Long version) {
@@ -53,7 +53,7 @@ public class ProductionPlanController {
     }
 
     @PostMapping("/{id}/cancel")
-    @PreAuthorize("hasRole('COORDINATOR') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION')")
     public ResponseEntity<ProductionPlanResponse> cancelProductionPlan(
             @PathVariable Long id,
             @RequestHeader(value = "If-Match", required = false) Long version,
@@ -63,7 +63,7 @@ public class ProductionPlanController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('KITCHEN_STAFF') or hasRole('COORDINATOR') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('VIEW_PRODUCTION_PLAN')")
     public ResponseEntity<org.springframework.data.domain.Page<com.swp.ckms.dto.response.ProductionPlanSummaryResponse>> getAllProductionPlans(
             @RequestParam(required = false) com.swp.ckms.enums.ProductionPlanStatus status,
             org.springframework.data.domain.Pageable pageable) {
@@ -71,7 +71,7 @@ public class ProductionPlanController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('KITCHEN_STAFF') or hasRole('COORDINATOR') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('VIEW_PRODUCTION_PLAN')")
     public ResponseEntity<com.swp.ckms.dto.response.ProductionPlanDetailResponse> getProductionPlanDetail(@PathVariable Long id) {
         return ResponseEntity.ok(productionPlanService.getProductionPlanDetail(id));
     }

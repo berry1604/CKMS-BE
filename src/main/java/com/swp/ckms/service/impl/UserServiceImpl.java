@@ -14,6 +14,7 @@ import com.swp.ckms.service.UserService;
 import com.swp.ckms.specification.UserSpecification;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -42,6 +43,9 @@ public class UserServiceImpl implements UserService {
     private final EmailService emailService;
     private final ApplicationEventPublisher eventPublisher;
     private final PasswordEncoder passwordEncoder;
+
+    @Value("${app.frontend.reset-password-url:http://localhost:5173/reset-password}")
+    private String resetPasswordUrl;
 
     @Override
     @Transactional
@@ -162,9 +166,7 @@ public class UserServiceImpl implements UserService {
 
         userRepository.save(user);
 
-        // In a real app, this should be a frontend URL like: https://myapp.com/reset-password?token=...
-        // For testing/backend-only, we just send the token or a dummy link
-        String resetLink = "http://localhost:8080/reset-password-ui?token=" + rawToken; 
+        String resetLink = resetPasswordUrl + "?token=" + rawToken; 
         
         emailService.sendResetPasswordEmail(user.getEmail(), user.getFullName(), resetLink);
     }

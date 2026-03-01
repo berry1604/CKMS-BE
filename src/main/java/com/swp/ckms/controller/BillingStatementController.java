@@ -31,7 +31,7 @@ public class BillingStatementController {
     private final BillingStatementService billingStatementService;
 
     @PostMapping("/generate")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('CONFIRM_PAYMENT')")
     public ResponseEntity<ApiResponse<BillingStatementResponse>> generateManualStatement(
             @RequestParam Long storeId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate periodStart,
@@ -49,7 +49,7 @@ public class BillingStatementController {
     }
 
     @PostMapping("/generate/batch")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('CONFIRM_PAYMENT')")
     public ResponseEntity<ApiResponse<BatchBillingStatementResponse>> generateBatchStatements(
             @RequestBody BatchBillingStatementRequest request) {
 
@@ -65,7 +65,7 @@ public class BillingStatementController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('VIEW_BILLING')")
     public ResponseEntity<ApiResponse<Page<BillingStatementSummaryResponse>>> getStatements(
             @RequestParam(required = false) Long storeId,
             @RequestParam(required = false) BillingStatementStatus status,
@@ -83,7 +83,7 @@ public class BillingStatementController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('VIEW_BILLING')")
     public ResponseEntity<ApiResponse<BillingStatementDetailResponse>> getStatementDetail(@PathVariable Long id) {
         BillingStatementDetailResponse response = billingStatementService.getStatementById(id);
         
@@ -97,7 +97,7 @@ public class BillingStatementController {
     }
 
     @PatchMapping("/{id}/pay")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('CONFIRM_PAYMENT')")
     public ResponseEntity<ApiResponse<PaymentStatementResponse>> payStatement(
             @PathVariable Long id,
             @RequestBody PaymentStatementRequest request) {

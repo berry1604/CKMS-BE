@@ -23,6 +23,8 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     List<StoreOrder> findByStore_StoreId(Long storeId);
     Page<StoreOrder> findByStore_StoreId(Long storeId, Pageable pageable);
     Page<StoreOrder> findByStore_StoreIdAndStatus(Long storeId, OrderStatus status, Pageable pageable);
+    
+    List<StoreOrder> findByProductionPlan_PlanId(Long planId);
 
     @Modifying
     @Query("UPDATE StoreOrder o SET o.productionPlan.planId = :planId, o.status = com.swp.ckms.enums.OrderStatus.GROUPED WHERE o.orderId IN :orderIds AND o.productionPlan IS NULL AND o.status = com.swp.ckms.enums.OrderStatus.CONFIRMED")

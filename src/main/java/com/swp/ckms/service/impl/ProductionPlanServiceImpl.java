@@ -125,9 +125,9 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         User currentUser = userRepository.findById(ctx.getUserId())
                 .orElseThrow(() -> new AccessDeniedException("User not found in system"));
         
-        // Checking Coordinator / Admin logic: either user is Admin or User's kitchen == Plan's kitchen
-        boolean isAdmin = currentUser.getRole() != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName());
-        if (!isAdmin) {
+        // Checking Management / Admin logic: either user is SYSTEM scope or User's kitchen == Plan's kitchen
+        boolean isSystemScope = "SYSTEM".equalsIgnoreCase(ctx.getScope());
+        if (!isSystemScope) {
             if (currentUser.getKitchen() == null || !currentUser.getKitchen().getKitchenId().equals(plan.getKitchen().getKitchenId())) {
                 throw new AccessDeniedException("You do not have permission to modify this Production Plan.");
             }
@@ -208,11 +208,11 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         User currentUser = userRepository.findById(ctx.getUserId())
                 .orElseThrow(() -> new AccessDeniedException("User not found in system"));
 
-        boolean isAdmin = currentUser.getRole() != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName());
+        boolean isSystemScope = "SYSTEM".equalsIgnoreCase(ctx.getScope());
         ProductionPlan plan;
         
         // Step 2: Fetch ProductionPlan
-        if (!isAdmin) {
+        if (!isSystemScope) {
             if (currentUser.getKitchen() == null) {
                 throw new AccessDeniedException("You do not have permission to modify this Production Plan.");
             }
@@ -361,11 +361,11 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         User currentUser = userRepository.findById(ctx.getUserId())
                 .orElseThrow(() -> new AccessDeniedException("User not found in system"));
 
-        boolean isAdmin = currentUser.getRole() != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName());
+        boolean isSystemScope = "SYSTEM".equalsIgnoreCase(ctx.getScope());
         ProductionPlan plan;
 
         // Step 2: Fetch ProductionPlan with Kitchen Check
-        if (!isAdmin) {
+        if (!isSystemScope) {
             if (currentUser.getKitchen() == null) {
                 throw new AccessDeniedException("You do not have permission to modify this Production Plan.");
             }
@@ -409,7 +409,49 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         // Step 6: Bulk Update Store Orders (Only GROUPED -> READY)
         storeOrderRepository.updateOrderStatusToReadyByPlanId(planId);
 
-        // Step 7: Return response
+        // Step 7: Feedback Loop - Add produced items to Kitchen Stock
+        // Find default warehouse for the plan's kitchen
+        com.swp.ckms.entity.KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("No default warehouse found for production feedback loop. Kitchen ID: " + plan.getKitchen().getKitchenId()));
+
+        // Aggregate products from all orders in this plan
+        List<com.swp.ckms.entity.StoreOrder> orders = storeOrderRepository.findByProductionPlan_PlanId(planId);
+        
+        for (com.swp.ckms.entity.StoreOrder order : orders) {
+            for (com.swp.ckms.entity.OrderDetail detail : order.getOrderDetails()) {
+                com.swp.ckms.entity.Product product = detail.getProduct();
+                java.math.BigDecimal producedQty = java.math.BigDecimal.valueOf(detail.getQuantity());
+
+                // Find or create stock item (for finished product, batchCode might be plan's batchCode)
+                com.swp.ckms.entity.KitchenStockItem stockItem = kitchenStockItemRepository
+                        .findByWarehouse_WarehouseIdAndProduct_Id(warehouse.getWarehouseId(), product.getId())
+                        .stream().findFirst()
+                        .orElseGet(() -> com.swp.ckms.entity.KitchenStockItem.builder()
+                                .warehouse(warehouse)
+                                .product(product)
+                                .quantity(java.math.BigDecimal.ZERO)
+                                .build());
+
+                stockItem.setQuantity(stockItem.getQuantity().add(producedQty));
+                stockItem.setProductionPlan(plan); // Tag with the plan that produced it
+                kitchenStockItemRepository.save(stockItem);
+
+                // Audit: Record Transaction
+                com.swp.ckms.entity.InventoryTransaction tx = com.swp.ckms.entity.InventoryTransaction.builder()
+                        .warehouse(warehouse)
+                        .type(com.swp.ckms.enums.InventoryTransactionType.PRODUCTION_ADD)
+                        .product(product) // Set product field
+                        .quantity(producedQty)
+                        .refId(planId)
+                        .note("Thêm thành phẩm từ kế hoạch sản xuất: " + plan.getBatchCode())
+                        .build();
+                inventoryTransactionRepository.save(tx);
+            }
+        }
+
+        // Step 8: Return response
         return ProductionPlanResponse.builder()
                 .planId(plan.getPlanId())
                 .planName(plan.getPlanName())
@@ -431,11 +473,11 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         User currentUser = userRepository.findById(ctx.getUserId())
                 .orElseThrow(() -> new AccessDeniedException("User not found in system"));
 
-        boolean isAdmin = currentUser.getRole() != null && "ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName());
+        boolean isSystemScope = "SYSTEM".equalsIgnoreCase(ctx.getScope());
         ProductionPlan plan;
 
         // Step 2: Fetch ProductionPlan with Kitchen Check
-        if (!isAdmin) {
+        if (!isSystemScope) {
             if (currentUser.getKitchen() == null) {
                 throw new AccessDeniedException("You do not have permission to modify this Production Plan.");
             }
@@ -563,11 +605,9 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                 );
 
         // Security Scope: STAFF only see their kitchen
-        boolean isAdminOrCoordinator = currentUser.getRole() != null && 
-                ("ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName()) || 
-                 "COORDINATOR".equalsIgnoreCase(currentUser.getRole().getRoleName()));
+        boolean isSystemScope = "SYSTEM".equalsIgnoreCase(ctx.getScope());
 
-        if (!isAdminOrCoordinator) {
+        if (!isSystemScope) {
             if (currentUser.getKitchen() == null) {
                 return org.springframework.data.domain.Page.empty(pageable);
             }
@@ -593,11 +633,9 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                 .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found with id: " + planId));
 
         // Security Scope: 404 Not Found if mismatch kitchen for STAFF
-        boolean isAdminOrCoordinator = currentUser.getRole() != null && 
-                ("ADMIN".equalsIgnoreCase(currentUser.getRole().getRoleName()) || 
-                 "COORDINATOR".equalsIgnoreCase(currentUser.getRole().getRoleName()));
+        boolean isSystemScope = "SYSTEM".equalsIgnoreCase(ctx.getScope());
 
-        if (!isAdminOrCoordinator) {
+        if (!isSystemScope) {
             if (currentUser.getKitchen() == null || 
                 !currentUser.getKitchen().getKitchenId().equals(plan.getKitchen().getKitchenId())) {
                 throw new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found with id: " + planId);
