@@ -72,4 +72,17 @@ public class UserController {
                 ApiResponse.success("User updated successfully", result)
         );
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('DELETE_USER')")
+    public ResponseEntity<ApiResponse<String>> deleteUser(
+            @PathVariable Long id
+    ) {
+
+        userService.deleteUser(id);
+
+        return ResponseEntity.ok(
+                ApiResponse.success("User deleted successfully", null)
+        );
+    }
 }

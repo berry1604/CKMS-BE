@@ -22,4 +22,6 @@ public interface UserService {
     UserResponse getUserByUsernameOrEmail(String username, String email);
 
     UserResponse updateUser(Long userId, UpdateUserRequest request);
+
+    void deleteUser(Long userId);
 }

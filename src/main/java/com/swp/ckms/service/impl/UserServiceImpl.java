@@ -289,4 +289,18 @@ public class UserServiceImpl implements UserService {
 
         return mapToResponse(user);
     }
+
+    @Override
+    @Transactional
+    public void deleteUser(Long userId) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+
+        user.setIsActive(false);
+        user.setStatus(UserStatus.INACTIVE);
+
+        userRepository.save(user);
+    }
 }
