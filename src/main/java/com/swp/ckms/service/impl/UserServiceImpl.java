@@ -1,12 +1,9 @@
 package com.swp.ckms.service.impl;
 
-import com.swp.ckms.dto.request.CreateUserRequest;
+import com.swp.ckms.dto.request.*;
 import com.swp.ckms.dto.response.CreateUserResponse;
-import com.swp.ckms.dto.request.ForgotPasswordRequest;
-import com.swp.ckms.dto.request.ResetPasswordRequest;
 import com.swp.ckms.dto.response.UserResponse;
 import com.swp.ckms.entity.User;
-import com.swp.ckms.dto.request.ActivateAccountRequest;
 import com.swp.ckms.enums.UserStatus;
 import com.swp.ckms.event.UserCreatedEvent;
 import com.swp.ckms.entity.Role;
@@ -260,5 +257,34 @@ public class UserServiceImpl implements UserService {
                 .status(user.getStatus().name())
                 .isActive(user.getIsActive())
                 .build();
+    }
+
+    @Override
+    public UserResponse updateUser(Long userId, UpdateUserRequest request) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (request.getFullName() != null) {
+            user.setFullName(request.getFullName());
+        }
+
+        if (request.getRoleId() != null) {
+            Role role = roleRepository.findById(request.getRoleId())
+                    .orElseThrow(() -> new RuntimeException("Role not found"));
+            user.setRole(role);
+        }
+
+        if (request.getStatus() != null) {
+            user.setStatus(UserStatus.valueOf(request.getStatus()));
+        }
+
+        if (request.getIsActive() != null) {
+            user.setIsActive(request.getIsActive());
+        }
+
+        userRepository.save(user);
+
+        return mapToResponse(user);
     }
 }

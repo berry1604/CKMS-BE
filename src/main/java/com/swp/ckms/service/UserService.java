@@ -1,10 +1,7 @@
 package com.swp.ckms.service;
 
-import com.swp.ckms.dto.request.CreateUserRequest;
+import com.swp.ckms.dto.request.*;
 import com.swp.ckms.dto.response.CreateUserResponse;
-import com.swp.ckms.dto.request.ForgotPasswordRequest;
-import com.swp.ckms.dto.request.ResetPasswordRequest;
-import com.swp.ckms.dto.request.ActivateAccountRequest;
 import com.swp.ckms.dto.response.UserResponse;
 import org.springframework.data.domain.Page;
 
@@ -23,4 +20,6 @@ public interface UserService {
     );
 
     UserResponse getUserByUsernameOrEmail(String username, String email);
+
+    UserResponse updateUser(Long userId, UpdateUserRequest request);
 }
