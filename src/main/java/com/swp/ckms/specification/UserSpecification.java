@@ -18,6 +18,10 @@ public class UserSpecification {
 
             List<Predicate> predicates = new ArrayList<>();
 
+            predicates.add(
+                    cb.isTrue(root.get("isActive"))
+            );
+
             if (role != null && !role.isBlank()) {
                 predicates.add(
                         cb.equal(root.get("role").get("roleName"), role)
