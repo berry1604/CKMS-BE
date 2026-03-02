@@ -12,4 +12,6 @@ public class MaterialRequest {
 
     @NotNull(message = "Unit is required")
     private UnitType unit;
+
+    private Boolean isActive;
 }
