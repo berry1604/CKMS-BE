@@ -14,7 +14,7 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
   - `POST /api/v1/materials` -> `{"name": "Thịt bò thăn", "unit": "KG"}` (Lấy `matId: 10`)
   - `POST /api/v1/materials` -> `{"name": "Gia vị Beefsteak", "unit": "GOI"}` (Lấy `matId: 11`)
 
-### 1.2 Tạo Bán thành phẩm & Công thức
+### 1.2 [QUAN TRỌNG] Thiết lập Định mức Công thức (Recipe)
 - **Actor**: `Manager` (Có quyền `CREATE_PRODUCT`, `CREATE_RECIPE`)
 - **Tạo Sản phẩm "Bò Beefsteak Sơ chế"**:
   - `POST /api/v1/products`
@@ -31,7 +31,9 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
       ]
     }
     ```
-    *(Mô tả: 1 phần bò beefsteak cần 0.25kg thịt thăn và 1 gói gia vị)*
+- **Ý nghĩa Công Thức**:
+  - **Định mức**: 1 phần bò cần **0.25kg** Thăn bò và **1 gói** Gia vị.
+  - **Sử dụng**: Công thức này được hệ thống dùng để tính toán tồn kho khi Lập kế hoạch (Giai đoạn 3.2).
 
 ---
 
@@ -51,15 +53,12 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
 
 ### 2.2 Cửa hàng đặt hàng
 - **Actor**: `Store Staff` (Có quyền `CREATE_STORE_ORDER`)
+- **Kiểm tra Sức chứa (BR-01)**: 
+  - Hệ thống kiểm tra: `Tồn kho tại Store + 40 phần Bò` có vượt quá `maxCapacity` của kho Store không.
+  - Dự kiến: Nếu kho Store có sức chứa > 40 -> **Thành công**.
 - **Đặt 40 phần Bò Beefsteak Sơ chế**:
   - `POST /api/v1/orders`
-  - Body:
-    ```json
-    {
-      "storeId": 1,
-      "items": [{"productId": 20, "quantity": 40}]
-    }
-    ```
+  - Body: `{"storeId": 1, "items": [{"productId": 20, "quantity": 40}]}`
   - **Kết quả**: Đơn hàng `#ORD-100` được tạo, trạng thái `SUBMITTED`.
 
 ---
@@ -73,16 +72,23 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
 
 ### 3.2 Lập kế hoạch sản xuất
 - **Actor**: `Coordinator` (Có quyền `CREATE_PRODUCTION_PLAN`)
+- **Kiểm tra Công suất (BR-02)**:
+  - Hệ thống kiểm tra tổng Quantity các Plan trong ngày `2026-03-05` của Bếp Trung tâm.
+  - Dự kiến: Nếu `Tổng tải hiện tại + 40` <= `maxDailyCapacity` (10,000) -> **Thành công**.
 - **Tạo kế hoạch cho Đơn hàng #100**:
-  - `POST /api/v1/production-plans` -> `{"storeOrderIds": [100]}` (Lấy `planId: 50`)
+  - `POST /api/v1/production-plans` 
+  - Body: `{"storeOrderIds": [100], "plannedDate": "2026-03-05"}` (Lấy `planId: 50`)
+  - **Hệ thống Snapshot**: Tự động tra cứu Công thức của Sản phẩm 20 và lưu lại mức cần dùng: 40 phần * 0.25 = **10kg Thăn bò**.
 - **Chuyển sang Sẵn sàng (Ready)**:
   - `PUT /api/v1/production-plans/50/ready`
-  - **Hệ thống**: Kiểm tra kho bếp: Cần `40 * 0.25 = 10kg` thịt bò. Hiện có 50kg -> **OK**.
+  - **Hệ thống**: Kiểm tra kho bếp: Cần **10kg thịt bò** (theo định mức recipe). Hiện có 50kg -> **OK**.
 
 ### 3.3 Thực thi sản xuất
 - **Actor**: `Kitchen Staff` (Có quyền `EXECUTE_PRODUCTION`, `UPDATE_PRODUCTION_PLAN`)
 - **Bắt đầu**: `POST /api/v1/production-plans/50/start`.
 - **Hoàn thành**: `POST /api/v1/production-plans/50/finish`.
+  - **Kiểm tra tràn kho bếp**: 
+    - Hệ thống kiểm tra: `Tồn kho Bếp hiện tại + 40 phần thành phẩm` có vượt quá `maxCapacity` kho Bếp không.
   - **Tác động kho**: 
     - Kho thịt bò giảm 10kg (Từ 50kg xuống 40kg).
     - Kho gia vị giảm 40 gói (Từ 200 gói xuống 160 gói).

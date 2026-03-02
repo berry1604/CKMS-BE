@@ -22,4 +22,7 @@ public class CentralKitchen {
     private String name;
 
     private String address;
+
+    @Column(precision = 19, scale = 2)
+    private java.math.BigDecimal maxDailyCapacity;
 }

@@ -1,6 +1,5 @@
 package com.swp.ckms.dto.request;
 
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,6 +15,9 @@ import java.util.List;
 public class ProductionPlanRequest {
 
     @NotNull(message = "Store order IDs list cannot be null")
-    @NotEmpty(message = "Store order IDs list cannot be empty")
+    @NotNull(message = "Store order IDs list cannot be empty")
     private List<Long> storeOrderIds;
+
+    @NotNull(message = "Ngày kế hoạch không được để trống")
+    private java.time.LocalDate plannedDate;
 }

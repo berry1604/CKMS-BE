@@ -12,6 +12,7 @@ import com.swp.ckms.repository.ProductionPlanMaterialRequirementRepository;
 import com.swp.ckms.repository.ProductionPlanRepository;
 import com.swp.ckms.repository.StoreOrderRepository;
 import com.swp.ckms.repository.UserRepository;
+import com.swp.ckms.exception.business.BusinessRuleViolationException;
 import com.swp.ckms.repository.projection.MaterialRequirementProjection;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
@@ -51,8 +52,26 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                 .orElseThrow(() -> new AccessDeniedException("User not found in system"));
 
         CentralKitchen kitchen = currentUser.getKitchen();
-        if (kitchen == null) {
+        if (kitchen == null || kitchen.getKitchenId() == null) {
             throw new AccessDeniedException("User does not belong to any Central Kitchen and cannot create a Production Plan.");
+        }
+
+        List<Long> orderIds = java.util.Objects.requireNonNull(request.getStoreOrderIds(), "Order IDs list cannot be null");
+
+        // BR-02: Check Production Capacity
+        java.math.BigDecimal currentLoad = storeOrderRepository.sumQuantityByOrderIds(orderIds);
+        if (currentLoad == null) currentLoad = java.math.BigDecimal.ZERO;
+
+        if (kitchen.getMaxDailyCapacity() != null) {
+            java.math.BigDecimal existingLoad = productionPlanRepository.sumPlannedQuantityByKitchenAndDate(
+                    kitchen.getKitchenId(), request.getPlannedDate());
+            if (existingLoad == null) existingLoad = java.math.BigDecimal.ZERO;
+
+            if (existingLoad.add(currentLoad).compareTo(kitchen.getMaxDailyCapacity()) > 0) {
+                throw new BusinessRuleViolationException(String.format(
+                        "Tổng tải sản xuất trong ngày %s vượt quá công suất bếp (Tối đa: %s, Hiện tại: %s, Plan mới: %s)",
+                        request.getPlannedDate(), kitchen.getMaxDailyCapacity(), existingLoad, currentLoad));
+            }
         }
 
         // Generate Plan Name
@@ -63,14 +82,14 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                 .kitchen(kitchen)
                 .coordinatorUser(currentUser)
                 .planName(planName)
+                .plannedDate(request.getPlannedDate())
                 .status(ProductionPlanStatus.PLANNED)
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        ProductionPlan savedPlan = productionPlanRepository.save(plan);
+        ProductionPlan savedPlan = java.util.Objects.requireNonNull(productionPlanRepository.save(plan), "Saved plan cannot be null");
 
         // Step 3: Atomic Assign Orders
-        List<Long> orderIds = request.getStoreOrderIds();
         int updatedRows = storeOrderRepository.assignOrdersToPlan(savedPlan.getPlanId(), orderIds);
 
         // Row Count Validation
@@ -112,6 +131,10 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         ProductionPlan plan = productionPlanRepository.findById(planId)
                 .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found with id: " + planId));
 
+        if (plan.getKitchen() == null) {
+            throw new IllegalStateException("Production Plan has no kitchen assigned.");
+        }
+
         // Step 2: Validate status == PLANNED
         if (plan.getStatus() != ProductionPlanStatus.PLANNED) {
             throw new OrderAssignmentConflictException("Production Plan is not in PLANNED state. Current state: " + plan.getStatus());
@@ -128,7 +151,7 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         // Checking Management / Admin logic: either user is SYSTEM scope or User's kitchen == Plan's kitchen
         boolean isSystemScope = "SYSTEM".equalsIgnoreCase(ctx.getScope());
         if (!isSystemScope) {
-            if (currentUser.getKitchen() == null || !currentUser.getKitchen().getKitchenId().equals(plan.getKitchen().getKitchenId())) {
+            if (currentUser.getKitchen() == null || plan.getKitchen().getKitchenId() == null || !currentUser.getKitchen().getKitchenId().equals(plan.getKitchen().getKitchenId())) {
                 throw new AccessDeniedException("You do not have permission to modify this Production Plan.");
             }
         }
@@ -147,7 +170,7 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
 
         // Step 6: Extract list of materialId
         List<Long> materialIds = requirements.stream()
-                .map(req -> req.getMaterial().getId())
+                .map(req -> java.util.Objects.requireNonNull(req.getMaterial(), "Material requirement has no material").getId())
                 .collect(java.util.stream.Collectors.toList());
 
         // Step 7: Lấy Map Stock
@@ -404,6 +427,31 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         }
         
         plan.setStatus(ProductionPlanStatus.FINISHED);
+        
+        // Kitchen Warehouse Capacity Check
+        com.swp.ckms.entity.KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("No default warehouse found for production feedback loop. Kitchen ID: " + plan.getKitchen().getKitchenId()));
+
+        if (warehouse.getMaxCapacity() != null) {
+            java.math.BigDecimal currentWarehouseQty = kitchenStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
+            if (currentWarehouseQty == null) currentWarehouseQty = java.math.BigDecimal.ZERO;
+
+            java.math.BigDecimal newProducedQty = storeOrderRepository.sumQuantityByOrderIds(
+                    storeOrderRepository.findByProductionPlan_PlanId(planId).stream()
+                            .map(com.swp.ckms.entity.StoreOrder::getOrderId)
+                            .collect(java.util.stream.Collectors.toList())
+            );
+            if (newProducedQty == null) newProducedQty = java.math.BigDecimal.ZERO;
+
+            if (currentWarehouseQty.add(newProducedQty).compareTo(warehouse.getMaxCapacity()) > 0) {
+                throw new BusinessRuleViolationException(String.format(
+                        "Việc nhập thành phẩm sẽ làm tràn kho bếp. (Công suất kho tối đa: %s, Hiện tại: %s, Nhập mới: %s)",
+                        warehouse.getMaxCapacity(), currentWarehouseQty, newProducedQty));
+            }
+        }
+
         productionPlanRepository.save(plan);
 
         // Step 6: Bulk Update Store Orders (Only GROUPED -> READY)
@@ -411,11 +459,8 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
 
         // Step 7: Feedback Loop - Add produced items to Kitchen Stock
         // Find default warehouse for the plan's kitchen
-        com.swp.ckms.entity.KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
-                .stream()
-                .findFirst()
-                .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("No default warehouse found for production feedback loop. Kitchen ID: " + plan.getKitchen().getKitchenId()));
-
+        // Already fetched above for capacity check
+        
         // Aggregate products from all orders in this plan
         List<com.swp.ckms.entity.StoreOrder> orders = storeOrderRepository.findByProductionPlan_PlanId(planId);
         
