@@ -33,6 +33,9 @@ public class ProductionPlan {
 
     private String batchCode;
 
+    @Column(nullable = false)
+    private java.time.LocalDate plannedDate;
+
     private LocalDateTime createdAt;
 
     @Enumerated(EnumType.STRING)

@@ -158,15 +158,18 @@ public class DataSeeder implements CommandLineRunner {
         // 1. Seed Bếp Trung Tâm và Kho Bếp (ID = 1)
         if (!centralKitchenRepository.existsById(1L)) {
             CentralKitchen kitchen = centralKitchenRepository.save(CentralKitchen.builder()
-                    .name("Bếp Trung Tâm Chính")
-                    .address("Hệ Thống Bếp Mặc Định")
+                    .name("Hệ thống Bếp Trung tâm")
+                    .address("123 Láng Hạ, Đống Đa, Hà Nội")
+                    .maxDailyCapacity(java.math.BigDecimal.valueOf(10000))
                     .build());
             System.out.println(">>> Seeded default Central Kitchen");
 
-            warehouseRepository.save(KitchenWarehouse.builder()
-                    .name("Kho Bếp Trung Tâm")
+            KitchenWarehouse kitchenWarehouse = KitchenWarehouse.builder()
                     .kitchen(kitchen)
-                    .build());
+                    .name("Kho Tổng Bếp Trung tâm")
+                    .maxCapacity(java.math.BigDecimal.valueOf(50000))
+                    .build();
+            warehouseRepository.save(kitchenWarehouse);
             System.out.println(">>> Seeded default Kitchen Warehouse");
         }
 

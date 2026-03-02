@@ -14,4 +14,17 @@ public interface ProductionPlanRepository extends JpaRepository<ProductionPlan, 
 
     @Query("SELECT p FROM ProductionPlan p LEFT JOIN FETCH p.materialRequirements WHERE p.planId = :planId")
     Optional<ProductionPlan> findByIdWithMaterials(@Param("planId") Long planId);
+
+    @Query("""
+        SELECT SUM(od.quantity) 
+        FROM ProductionPlan p 
+        JOIN StoreOrder o ON o.productionPlan.planId = p.planId
+        JOIN o.orderDetails od
+        WHERE p.kitchen.kitchenId = :kitchenId 
+        AND p.plannedDate = :plannedDate 
+        AND p.status <> com.swp.ckms.enums.ProductionPlanStatus.CANCELLED
+    """)
+    java.math.BigDecimal sumPlannedQuantityByKitchenAndDate(
+            @Param("kitchenId") Long kitchenId, 
+            @Param("plannedDate") java.time.LocalDate plannedDate);
 }
