@@ -185,6 +185,86 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
     @Override
     @Transactional
+    public StoreOrderResponse updateOrder(Long id, StoreOrderRequest request, String username) {
+        StoreOrder order = storeOrderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with ID: " + id));
+
+        // BR-07: Modification Window Guard
+        if (order.getStatus() != OrderStatus.SUBMITTED) {
+            throw new BusinessRuleViolationException("Cannot modify order because it is already processed (Status: " + order.getStatus() + ")");
+        }
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (user.getStore() == null || !user.getStore().getStoreId().equals(order.getStore().getStoreId())) {
+            throw new org.springframework.security.access.AccessDeniedException("You can only modify orders of your own store");
+        }
+
+        // BR-01: Re-check Warehouse Capacity
+        FranchiseStore store = order.getStore();
+        StoreWarehouse warehouse = storeWarehouseRepository.findByStore_StoreId(store.getStoreId())
+                .orElse(null);
+
+        if (warehouse != null && warehouse.getMaxCapacity() != null) {
+            BigDecimal currentQty = storeStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
+            if (currentQty == null) currentQty = BigDecimal.ZERO;
+
+            double oldOrderQty = order.getOrderDetails().stream().mapToDouble(com.swp.ckms.entity.OrderDetail::getQuantity).sum();
+            double newOrderQty = request.getItems().stream().mapToDouble(com.swp.ckms.dto.request.OrderItemRequest::getQuantity).sum();
+
+            if (currentQty.subtract(BigDecimal.valueOf(oldOrderQty)).add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
+                throw new BusinessRuleViolationException("Updated order exceeds warehouse capacity.");
+            }
+        }
+
+        // Update details
+        order.getOrderDetails().clear();
+        BigDecimal totalAmount = BigDecimal.ZERO;
+
+        for (com.swp.ckms.dto.request.OrderItemRequest itemReq : request.getItems()) {
+            Product product = productRepository.findById(itemReq.getProductId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+
+            OrderDetail detail = OrderDetail.builder()
+                    .order(order)
+                    .product(product)
+                    .quantity(itemReq.getQuantity())
+                    .unitPrice(product.getPrice())
+                    .build();
+
+            order.getOrderDetails().add(detail);
+            totalAmount = totalAmount.add(product.getPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity())));
+        }
+
+        order.setTotalAmount(totalAmount);
+        return mapToOrderResponse(storeOrderRepository.save(order));
+    }
+
+    @Override
+    @Transactional
+    public void cancelOrder(Long id, String username) {
+        StoreOrder order = storeOrderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        // BR-07: Modification Window Guard
+        if (order.getStatus() != OrderStatus.SUBMITTED) {
+            throw new BusinessRuleViolationException("Cannot cancel order because it is already processed (Status: " + order.getStatus() + ")");
+        }
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (user.getStore() == null || !user.getStore().getStoreId().equals(order.getStore().getStoreId())) {
+            throw new org.springframework.security.access.AccessDeniedException("You can only cancel orders of your own store");
+        }
+
+        order.setStatus(OrderStatus.REJECTED);
+        storeOrderRepository.save(order);
+    }
+
+    @Override
+    @Transactional
     public StoreOrderResponse updateOrderStatus(Long id, OrderStatus newStatus) {
         UserContext ctx = SecurityUtils.getCurrentUserContext();
         if (ctx == null) {
