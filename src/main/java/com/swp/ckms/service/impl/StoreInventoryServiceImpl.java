@@ -40,7 +40,26 @@ public class StoreInventoryServiceImpl implements StoreInventoryService {
                 .and(StoreInventorySpecification.hasProductName(productName))
                 .and(StoreInventorySpecification.hasProductId(productId));
 
+        if (pageable == null) {
+            pageable = Pageable.unpaged();
+        }
+
         return stockItemRepository.findAll(spec, pageable).map(this::mapToResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public java.util.List<com.swp.ckms.dto.response.StoreStockBatchResponse> getProductBatches(Long productId) {
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null || ctx.getStoreId() == null) {
+            throw new AccessDeniedException("Unauthorized: No store associated with user");
+        }
+
+        if (productId == null || productId <= 0) {
+            throw new IllegalArgumentException("Invalid Product ID");
+        }
+
+        return stockItemRepository.getProductBatches(ctx.getStoreId(), productId);
     }
 
     private StoreStockItemResponse mapToResponse(StoreStockItem item) {

@@ -6,4 +6,6 @@ import org.springframework.data.domain.Pageable;
 
 public interface StoreInventoryService {
     Page<StoreStockItemResponse> getStoreInventory(String productName, Long productId, Pageable pageable);
+
+    java.util.List<com.swp.ckms.dto.response.StoreStockBatchResponse> getProductBatches(Long productId);
 }
