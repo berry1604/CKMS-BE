@@ -91,6 +91,33 @@ public class RecipeServiceImpl implements RecipeService {
         return mapToResponse(recipe);
     }
 
+    @Override
+    @Transactional
+    public RecipeResponse toggleRecipeStatus(Long recipeId, boolean status) {
+        Recipe recipe = recipeRepository.findById(recipeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Recipe not found with id: " + recipeId));
+
+        if (status) { // Reactivation check
+            // BR-04: Cannot activate if any constituent material is inactive
+            for (RecipeDetail detail : recipe.getRecipeDetails()) {
+                if (detail.getMaterial() == null || !detail.getMaterial().getIsActive()) {
+                    String matName = detail.getMaterial() != null ? detail.getMaterial().getName() : "Unknown";
+                    throw new com.swp.ckms.exception.business.BusinessRuleViolationException(
+                            "Cannot activate recipe because material '" + matName + "' is inactive."
+                    );
+                }
+            }
+            
+            // If activating strictly for a product, ensure only one is active
+            if (recipeRepository.existsByProductIdAndIsActiveTrue(recipe.getProduct().getId()) && !recipe.getIsActive()) {
+                 throw new DuplicateResourceException("Another active recipe already exists for this product. Deactivate it first.");
+            }
+        }
+
+        recipe.setIsActive(status);
+        return mapToResponse(recipeRepository.save(recipe));
+    }
+
     private RecipeResponse mapToResponse(Recipe recipe) {
         List<RecipeDetailResponse> detailResponses = recipe.getRecipeDetails().stream()
                 .map(detail -> RecipeDetailResponse.builder()

@@ -50,4 +50,18 @@ public class RecipeController {
                 .timestamp(LocalDateTime.now())
                 .build());
     }
+
+    @PatchMapping("/{recipeId}/status")
+    @PreAuthorize("hasAuthority('MANAGE_CATALOG')")
+    public ResponseEntity<ApiResponse<RecipeResponse>> toggleRecipeStatus(
+            @PathVariable Long recipeId,
+            @RequestParam boolean active) {
+        RecipeResponse response = recipeService.toggleRecipeStatus(recipeId, active);
+        return ResponseEntity.ok(ApiResponse.<RecipeResponse>builder()
+                .status(HttpStatus.OK.value())
+                .message("Recipe status updated successfully")
+                .data(response)
+                .timestamp(LocalDateTime.now())
+                .build());
+    }
 }
