@@ -51,4 +51,6 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     @Modifying
     @Query("UPDATE StoreOrder o SET o.productionPlan = NULL, o.status = com.swp.ckms.enums.OrderStatus.CONFIRMED WHERE o.productionPlan.planId = :planId")
     int releaseOrdersFromPlan(@Param("planId") Long planId);
+
+    List<StoreOrder> findByShipment_ShipmentId(Long shipmentId);
 }
