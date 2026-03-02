@@ -301,7 +301,7 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
 
                 // RECORD AUDIT TRANSACTION
                 inventoryTransactionRepository.save(com.swp.ckms.entity.InventoryTransaction.builder()
-                        .warehouse(warehouse)
+                        .kitchenWarehouse(warehouse)
                         .material(req.getMaterial())
                         .quantity(deductedQty.negate()) // Negative for deduction
                         .type(com.swp.ckms.enums.InventoryTransactionType.PRODUCTION_DEDUCT)
@@ -440,7 +440,7 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
 
                 // Audit: Record Transaction
                 com.swp.ckms.entity.InventoryTransaction tx = com.swp.ckms.entity.InventoryTransaction.builder()
-                        .warehouse(warehouse)
+                        .kitchenWarehouse(warehouse)
                         .type(com.swp.ckms.enums.InventoryTransactionType.PRODUCTION_ADD)
                         .product(product) // Set product field
                         .quantity(producedQty)
@@ -524,7 +524,7 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                     // For now, let's assume we try to find a compatible one first.
                     
                     List<com.swp.ckms.entity.KitchenStockItem> targetItems = kitchenStockItemRepository.lockMaterialsForDeduction(
-                            tx.getWarehouse().getWarehouseId(), 
+                            tx.getKitchenWarehouse().getWarehouseId(), 
                             java.util.Collections.singletonList(tx.getMaterial().getId())
                     ).stream()
                     .filter(i -> i.getExpiryDate() == null ? tx.getMaterial().getId() != null : true ) // Simplified check
@@ -539,13 +539,11 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                     }
                     
                     // IF NO MATCH, CREATE NEW. IF MATCH, ADD QUANTITY.
-                    // Simplified: Since we want to be strict, let's just create a new row or add to first available 
-                    // that matches material + warehouse + (ideally) expiry.
                     
                     // Actually, the most robust way in the current schema without an 'original_stock_item_id' 
                     // is to create a new record representing the returned goods to maintain the return's identity.
                     kitchenStockItemRepository.save(com.swp.ckms.entity.KitchenStockItem.builder()
-                            .warehouse(tx.getWarehouse())
+                            .warehouse(tx.getKitchenWarehouse())
                             .material(tx.getMaterial())
                             .quantity(tx.getQuantity().abs()) // Restore the absolute value
                             .expiryDate(null) // Ideally we'd store expiry in Transaction too, or trace back. 
@@ -553,7 +551,7 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
 
                     // Record Audit Return
                     inventoryTransactionRepository.save(com.swp.ckms.entity.InventoryTransaction.builder()
-                            .warehouse(tx.getWarehouse())
+                            .kitchenWarehouse(tx.getKitchenWarehouse())
                             .material(tx.getMaterial())
                             .quantity(tx.getQuantity().abs())
                             .type(com.swp.ckms.enums.InventoryTransactionType.PRODUCTION_RETURN)
