@@ -13,4 +13,6 @@ public interface StoreOrderService {
     Page<StoreOrderResponse> getAllOrders(OrderStatus status, Pageable pageable);
     StoreOrderResponse getOrderById(Long id);
     StoreOrderResponse updateOrderStatus(Long id, OrderStatus status);
+    StoreOrderResponse updateOrder(Long id, StoreOrderRequest request, String username);
+    void cancelOrder(Long id, String username);
 }

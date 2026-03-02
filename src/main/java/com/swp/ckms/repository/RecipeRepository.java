@@ -15,4 +15,7 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     List<Recipe> findByProductIdOrderByVersionDesc(Long productId);
     
     boolean existsByProductIdAndIsActiveTrue(Long productId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT r FROM Recipe r JOIN r.recipeDetails d WHERE d.material.id = :materialId AND r.isActive = true")
+    List<Recipe> findActiveRecipesByMaterialId(@org.springframework.data.repository.query.Param("materialId") Long materialId);
 }

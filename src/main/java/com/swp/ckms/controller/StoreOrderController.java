@@ -88,4 +88,21 @@ public class StoreOrderController {
         StoreOrderResponse response = storeOrderService.updateOrderStatus(id, status);
         return ResponseEntity.ok(response);
     }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('CREATE_STORE_ORDER')")
+    public ResponseEntity<StoreOrderResponse> updateOrder(
+            @PathVariable Long id,
+            @Valid @RequestBody StoreOrderRequest request,
+            Authentication authentication) {
+        StoreOrderResponse response = storeOrderService.updateOrder(id, request, authentication.getName());
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('CREATE_STORE_ORDER')")
+    public ResponseEntity<Void> cancelOrder(@PathVariable Long id, Authentication authentication) {
+        storeOrderService.cancelOrder(id, authentication.getName());
+        return ResponseEntity.noContent().build();
+    }
 }

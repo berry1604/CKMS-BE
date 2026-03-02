@@ -53,4 +53,7 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     int releaseOrdersFromPlan(@Param("planId") Long planId);
 
     List<StoreOrder> findByShipment_ShipmentId(Long shipmentId);
+
+    @Query("SELECT SUM(od.quantity) FROM StoreOrder o JOIN o.orderDetails od WHERE o.orderId IN :orderIds")
+    java.math.BigDecimal sumQuantityByOrderIds(@Param("orderIds") List<Long> orderIds);
 }
