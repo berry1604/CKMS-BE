@@ -16,8 +16,12 @@ import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.InvoiceRepository;
 import com.swp.ckms.repository.ProductRepository;
 import com.swp.ckms.repository.StoreOrderRepository;
+import com.swp.ckms.repository.StoreStockItemRepository;
+import com.swp.ckms.repository.StoreWarehouseRepository;
 import com.swp.ckms.repository.UserRepository;
 import com.swp.ckms.repository.specification.StoreOrderSpecification;
+import com.swp.ckms.entity.StoreWarehouse;
+import com.swp.ckms.exception.business.BusinessRuleViolationException;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.StoreOrderService;
@@ -45,6 +49,8 @@ public class StoreOrderServiceImpl implements StoreOrderService {
     private final FranchiseStoreRepository franchiseStoreRepository;
     private final ProductRepository productRepository;
     private final InvoiceRepository invoiceRepository;
+    private final StoreWarehouseRepository storeWarehouseRepository;
+    private final StoreStockItemRepository storeStockItemRepository;
 
     @Override
     public StoreOrderResponse createOrder(StoreOrderRequest request, String username) {
@@ -65,6 +71,25 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .status(OrderStatus.SUBMITTED)
                 .batchId(null)
                 .build();
+
+        // BR-01: Check Warehouse Capacity
+        StoreWarehouse warehouse = storeWarehouseRepository.findByStore_StoreId(store.getStoreId())
+                .orElse(null); // If no warehouse, we might skip or fail. SRS says receiving updates warehouse, so it should exist.
+
+        if (warehouse != null && warehouse.getMaxCapacity() != null) {
+            BigDecimal currentQty = storeStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
+            if (currentQty == null) currentQty = BigDecimal.ZERO;
+
+            double newOrderQty = request.getItems().stream()
+                    .mapToDouble(OrderItemRequest::getQuantity)
+                    .sum();
+
+            if (currentQty.add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
+                throw new BusinessRuleViolationException(String.format(
+                        "Đơn hàng vượt quá sức chứa của kho. (Tối đa: %s, Hiện tại: %s, Đặt thêm: %s)",
+                        warehouse.getMaxCapacity(), currentQty, newOrderQty));
+            }
+        }
 
         List<OrderDetail> details = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;

@@ -182,6 +182,7 @@ public class DataSeeder implements CommandLineRunner {
             storeWarehouseRepository.save(StoreWarehouse.builder()
                     .name("Kho Cửa Hàng (Mẫu)")
                     .store(store)
+                    .maxCapacity(java.math.BigDecimal.valueOf(1000))
                     .build());
             System.out.println(">>> Seeded default Store Warehouse");
         }

@@ -9,6 +9,7 @@ public enum AppPrivilege {
     VIEW_USER("VIEW_USER", "Có thể xem chi tiết người dùng"),
     UPDATE_USER("UPDATE_USER", "Có thể cập nhật thông tin người dùng"),
     DELETE_USER("DELETE_USER", "Có thể xóa người dùng"),
+    MANAGE_STORES("MANAGE_STORES", "Quản lý danh sách Cửa hàng Franchise"),
 
     // Role Management
     CREATE_ROLE("CREATE_ROLE", "Có thể tạo vai trò mới"),

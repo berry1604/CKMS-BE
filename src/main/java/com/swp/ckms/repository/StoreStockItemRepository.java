@@ -29,4 +29,7 @@ public interface StoreStockItemRepository extends JpaRepository<StoreStockItem, 
     java.util.List<com.swp.ckms.dto.response.StoreStockBatchResponse> getProductBatches(
             @org.springframework.data.repository.query.Param("storeId") Long storeId, 
             @org.springframework.data.repository.query.Param("productId") Long productId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT SUM(s.quantity) FROM StoreStockItem s WHERE s.warehouse.warehouseId = :warehouseId")
+    java.math.BigDecimal getTotalQuantityByWarehouseId(@org.springframework.data.repository.query.Param("warehouseId") Long warehouseId);
 }
