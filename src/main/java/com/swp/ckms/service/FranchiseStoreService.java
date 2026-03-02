@@ -15,4 +15,6 @@ public interface FranchiseStoreService {
     );
 
     StoreResponse updateStore(Long id, StoreUpdateRequest request);
+
+    void deleteStore(Long id);
 }

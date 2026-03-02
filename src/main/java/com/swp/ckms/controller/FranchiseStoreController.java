@@ -72,4 +72,17 @@ public class FranchiseStoreController {
                 ApiResponse.success("Store updated successfully", response)
         );
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('MANAGE_STORES')")
+    public ResponseEntity<ApiResponse<String>> deleteStore(
+            @PathVariable Long id
+    ) {
+
+        storeService.deleteStore(id);
+
+        return ResponseEntity.ok(
+                ApiResponse.success("Store deleted successfully", null)
+        );
+    }
 }
