@@ -37,4 +37,13 @@ public class StoreInventoryController {
         Page<StoreStockItemResponse> response = storeInventoryService.getStoreInventory(name, productId, pageable);
         return ApiResponse.success("Tải danh sách tồn kho thành công", response);
     }
+
+    @GetMapping("/{productId}/batches")
+    @PreAuthorize("hasAuthority('VIEW_STORE_INVENTORY')")
+    public ApiResponse<java.util.List<com.swp.ckms.dto.response.StoreStockBatchResponse>> getProductBatches(
+            @jakarta.validation.constraints.NotNull @org.springframework.web.bind.annotation.PathVariable Long productId) {
+        
+        java.util.List<com.swp.ckms.dto.response.StoreStockBatchResponse> response = storeInventoryService.getProductBatches(productId);
+        return ApiResponse.success("Tải chi tiết lô hàng thành công", response);
+    }
 }

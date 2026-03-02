@@ -14,10 +14,19 @@ import java.util.Optional;
 @Repository
 public interface StoreStockItemRepository extends JpaRepository<StoreStockItem, Long>, JpaSpecificationExecutor<StoreStockItem> {
 
-    @Override
-    @EntityGraph(attributePaths = {"product", "warehouse", "warehouse.store"})
-    Page<StoreStockItem> findAll(Specification<StoreStockItem> spec, Pageable pageable);
-
     @EntityGraph(attributePaths = {"product", "warehouse", "warehouse.store"})
     Optional<StoreStockItem> findById(Long id);
+
+    @org.springframework.data.jpa.repository.Query("SELECT new com.swp.ckms.dto.response.StoreStockBatchResponse(" +
+           "s.id, p.id, p.name, s.quantity, s.expiryDate, pp.planId, pp.batchCode) " +
+           "FROM StoreStockItem s " +
+           "JOIN s.product p " +
+           "JOIN s.warehouse w " +
+           "JOIN w.store st " +
+           "LEFT JOIN s.productionPlan pp " +
+           "WHERE st.id = :storeId AND p.id = :productId AND s.quantity > 0 " +
+           "ORDER BY s.expiryDate ASC NULLS LAST, s.id ASC")
+    java.util.List<com.swp.ckms.dto.response.StoreStockBatchResponse> getProductBatches(
+            @org.springframework.data.repository.query.Param("storeId") Long storeId, 
+            @org.springframework.data.repository.query.Param("productId") Long productId);
 }
