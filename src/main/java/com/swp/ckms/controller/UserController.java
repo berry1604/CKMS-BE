@@ -1,6 +1,7 @@
 package com.swp.ckms.controller;
 
 import com.swp.ckms.dto.request.CreateUserRequest;
+import com.swp.ckms.dto.request.UpdateUserRequest;
 import com.swp.ckms.dto.response.ApiResponse;
 import com.swp.ckms.dto.response.CreateUserResponse;
 import com.swp.ckms.dto.response.UserResponse;
@@ -55,6 +56,33 @@ public class UserController {
 
         return ResponseEntity.ok(
                 ApiResponse.success("User fetched successfully", result)
+        );
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('UPDATE_USER')")
+    public ResponseEntity<ApiResponse<UserResponse>> updateUser(
+            @PathVariable Long id,
+            @RequestBody UpdateUserRequest request
+    ) {
+
+        UserResponse result = userService.updateUser(id, request);
+
+        return ResponseEntity.ok(
+                ApiResponse.success("User updated successfully", result)
+        );
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('DELETE_USER')")
+    public ResponseEntity<ApiResponse<String>> deleteUser(
+            @PathVariable Long id
+    ) {
+
+        userService.deleteUser(id);
+
+        return ResponseEntity.ok(
+                ApiResponse.success("User deleted successfully", null)
         );
     }
 }
