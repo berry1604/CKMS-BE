@@ -1,6 +1,7 @@
 package com.swp.ckms.controller;
 
 import com.swp.ckms.dto.request.StoreCreateRequest;
+import com.swp.ckms.dto.request.StoreUpdateRequest;
 import com.swp.ckms.dto.response.StoreResponse;
 import com.swp.ckms.service.FranchiseStoreService;
 import jakarta.validation.Valid;
@@ -55,6 +56,20 @@ public class FranchiseStoreController {
 
         return ResponseEntity.ok(
                 ApiResponse.success("Stores fetched successfully", response)
+        );
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('MANAGE_STORES')")
+    public ResponseEntity<ApiResponse<StoreResponse>> updateStore(
+            @PathVariable Long id,
+            @Valid @RequestBody StoreUpdateRequest request
+    ) {
+
+        StoreResponse response = storeService.updateStore(id, request);
+
+        return ResponseEntity.ok(
+                ApiResponse.success("Store updated successfully", response)
         );
     }
 }

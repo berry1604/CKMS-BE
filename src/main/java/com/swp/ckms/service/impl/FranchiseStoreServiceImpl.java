@@ -1,6 +1,7 @@
 package com.swp.ckms.service.impl;
 
 import com.swp.ckms.dto.request.StoreCreateRequest;
+import com.swp.ckms.dto.request.StoreUpdateRequest;
 import com.swp.ckms.dto.response.StoreResponse;
 import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.StoreWarehouse;
@@ -106,5 +107,46 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
 
             return mapToResponse(store, warehouse);
         });
+    }
+
+    @Override
+    @Transactional
+    public StoreResponse updateStore(Long id, StoreUpdateRequest request) {
+
+        FranchiseStore store = storeRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Store not found"));
+
+
+        if (!store.getName().equals(request.getName())
+                && storeRepository.existsByName(request.getName())) {
+            throw new DuplicateNameException("Tên cửa hàng đã tồn tại: " + request.getName());
+        }
+
+        //Update thông tin store
+        store.setName(request.getName());
+        store.setAddress(request.getAddress());
+        store.setPaymentCycle(
+                request.getPaymentCycle() != null
+                        ? request.getPaymentCycle()
+                        : store.getPaymentCycle()
+        );
+
+        FranchiseStore updatedStore = storeRepository.save(store);
+
+        //Lấy warehouse tương ứng
+        StoreWarehouse warehouse = warehouseRepository
+                .findByStore_StoreId(updatedStore.getStoreId())
+                .orElseThrow(() -> new RuntimeException("Warehouse not found"));
+
+        //Nếu capacity thay đổi thì cập nhật
+        if (request.getWarehouseCapacity() != null &&
+                (warehouse.getMaxCapacity() == null ||
+                        warehouse.getMaxCapacity().compareTo(request.getWarehouseCapacity()) != 0)) {
+
+            warehouse.setMaxCapacity(request.getWarehouseCapacity());
+            warehouseRepository.save(warehouse);
+        }
+
+        return mapToResponse(updatedStore, warehouse);
     }
 }
