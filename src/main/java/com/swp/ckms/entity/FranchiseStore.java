@@ -23,5 +23,9 @@ public class FranchiseStore {
 
     private String address;
 
-    private String paymentCycle; // e.g., "MONTHLY"
+    private String paymentCycle;// e.g., "MONTHLY"
+
+    @Builder.Default
+    @Column(nullable = false)
+    private Boolean isActive = true;
 }

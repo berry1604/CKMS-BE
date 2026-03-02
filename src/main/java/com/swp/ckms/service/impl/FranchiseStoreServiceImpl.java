@@ -149,4 +149,16 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
 
         return mapToResponse(updatedStore, warehouse);
     }
+
+    @Override
+    @Transactional
+    public void deleteStore(Long id) {
+
+        FranchiseStore store = storeRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Store not found"));
+
+        store.setIsActive(false);
+
+        storeRepository.save(store);
+    }
 }
