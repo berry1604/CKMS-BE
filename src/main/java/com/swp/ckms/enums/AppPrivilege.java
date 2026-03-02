@@ -58,6 +58,8 @@ public enum AppPrivilege {
     PREPARE_SHIPMENT("PREPARE_SHIPMENT", "Có thể chuẩn bị và đóng gói shipment (Kitchen)"),
     VIEW_SHIPMENT("VIEW_SHIPMENT", "Có thể xem thông tin shipment"),
     CONFIRM_SHIPMENT("CONFIRM_SHIPMENT", "Có thể xác nhận đã nhận hàng (Store)"),
+    START_SHIPMENT("START_SHIPMENT", "Có thể xác nhận xuất kho và bắt đầu giao hàng (Coordinator)"),
+    CANCEL_SHIPMENT("CANCEL_SHIPMENT", "Có thể hủy shipment (Coordinator)"),
 
     // Inventory Management
     VIEW_KITCHEN_INVENTORY("VIEW_KITCHEN_INVENTORY", "Có thể xem tồn kho bếp"),
