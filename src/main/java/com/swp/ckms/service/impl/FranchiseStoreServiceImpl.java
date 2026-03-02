@@ -7,10 +7,14 @@ import com.swp.ckms.entity.StoreWarehouse;
 import com.swp.ckms.exception.business.DuplicateNameException;
 import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.StoreWarehouseRepository;
+import com.swp.ckms.repository.specification.StoreSpecification;
 import com.swp.ckms.service.FranchiseStoreService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.*;
+import org.springframework.data.jpa.domain.Specification;
+
 
 import java.util.Objects;
 
@@ -58,5 +62,49 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
                 .warehouseId(warehouse.getWarehouseId())
                 .warehouseCapacity(warehouse.getMaxCapacity())
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public StoreResponse getStoreById(Long id) {
+
+        FranchiseStore store = storeRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Store not found"));
+
+        StoreWarehouse warehouse = warehouseRepository
+                .findByStore_StoreId(store.getStoreId())
+                .orElseThrow(() -> new RuntimeException("Warehouse not found"));
+
+        return mapToResponse(store, warehouse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<StoreResponse> getAllStores(
+            int page,
+            int size,
+            String search
+    ) {
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by("storeId").descending()
+        );
+
+        Specification<FranchiseStore> spec =
+                StoreSpecification.searchByName(search);
+
+        Page<FranchiseStore> stores =
+                storeRepository.findAll(spec, pageable);
+
+        return stores.map(store -> {
+
+            StoreWarehouse warehouse = warehouseRepository
+                    .findByStore_StoreId(store.getStoreId())
+                    .orElse(null);
+
+            return mapToResponse(store, warehouse);
+        });
     }
 }
