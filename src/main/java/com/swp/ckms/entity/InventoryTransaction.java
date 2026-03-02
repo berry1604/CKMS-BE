@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -26,8 +27,12 @@ public class InventoryTransaction {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "warehouse_id", nullable = false)
-    private KitchenWarehouse warehouse;
+    @JoinColumn(name = "kitchen_warehouse_id")
+    private KitchenWarehouse kitchenWarehouse;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "store_warehouse_id")
+    private StoreWarehouse storeWarehouse;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "material_id")
@@ -45,7 +50,13 @@ public class InventoryTransaction {
     private InventoryTransactionType type;
 
     @Column(name = "ref_id")
-    private Long refId; // ID của ProductionPlan
+    private Long refId; // ID của đối tượng tham chiếu (ProductionPlanId, ShipmentId, v.v.)
+
+    private LocalDate expiryDate;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "production_plan_id")
+    private ProductionPlan productionPlan;
 
     @Column(name = "ref_line_id")
     private Long refLineId; // ID của dòng Requirement (nếu cần trace sâu)

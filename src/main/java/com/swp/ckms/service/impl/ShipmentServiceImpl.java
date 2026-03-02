@@ -11,6 +11,8 @@ import com.swp.ckms.repository.*;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.ShipmentService;
+import com.swp.ckms.enums.InventoryTransactionType;
+import com.swp.ckms.enums.InvoiceStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -34,6 +36,13 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final ProductionPlanRepository productionPlanRepository;
     private final FranchiseStoreRepository franchiseStoreRepository;
     private final UserRepository userRepository;
+    private final KitchenStockItemRepository kitchenStockItemRepository;
+    private final StoreStockItemRepository storeStockItemRepository;
+    private final ShipmentSourcingRecordRepository shipmentSourcingRecordRepository;
+    private final InventoryTransactionRepository inventoryTransactionRepository;
+    private final KitchenWarehouseRepository kitchenWarehouseRepository;
+    private final StoreWarehouseRepository storeWarehouseRepository;
+    private final InvoiceRepository invoiceRepository;
 
 //-----------------------------------------------------------
 
@@ -48,12 +57,15 @@ public class ShipmentServiceImpl implements ShipmentService {
         User currentUser = userRepository.findById(ctx.getUserId())
                 .orElseThrow(() -> new AccessDeniedException("User not found"));
 
-        // Validate production plan exists and is FINISHED
-        ProductionPlan plan = productionPlanRepository.findById(request.getProductionPlanId())
-                .orElseThrow(() -> new ResourceNotFoundException("Production Plan not found: " + request.getProductionPlanId()));
+        // Validate production plan if provided
+        ProductionPlan plan = null;
+        if (request.getProductionPlanId() != null) {
+            plan = productionPlanRepository.findById(request.getProductionPlanId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Production Plan not found: " + request.getProductionPlanId()));
 
-        if (plan.getStatus() != com.swp.ckms.enums.ProductionPlanStatus.FINISHED) {
-            throw new IllegalStateException("Production Plan must be FINISHED before creating shipment. Current: " + plan.getStatus());
+            if (plan.getStatus() != com.swp.ckms.enums.ProductionPlanStatus.FINISHED) {
+                throw new IllegalStateException("Production Plan must be FINISHED before creating shipment. Current: " + plan.getStatus());
+            }
         }
 
         // Validate store
@@ -149,6 +161,11 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         shipment.setStatus(ShipmentStatus.IN_TRANSIT);
         shipment.setShippedAt(LocalDateTime.now());
+        
+        // --- LOGIC TRỪ KHO BẾP ---
+        sourceAndDeductStock(shipment);
+        // -------------------------
+
         shipmentRepository.save(shipment);
 
         log.info("Shipment #{} is now IN_TRANSIT", shipmentId);
@@ -198,8 +215,9 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
         storeOrderRepository.saveAll(orders);
 
-        // TODO: Cập nhật tồn kho cửa hàng (Store Inventory) ở đây
-        // transferToStoreInventory(shipment, orders);
+        // --- LOGIC CỘNG KHO STORE & UPDATE INVOICE ---
+        confirmAndTransferStock(shipment);
+        // ----------------------------------------------
 
         log.info("Shipment #{} DELIVERED and confirmed by user {}", shipmentId, currentUser.getUsername());
 
@@ -312,5 +330,120 @@ public class ShipmentServiceImpl implements ShipmentService {
                 .deliveredAt(shipment.getDeliveredAt())
                 .storeOrderIds(orders.stream().map(StoreOrder::getOrderId).collect(Collectors.toList()))
                 .build();
+    }
+
+    private void sourceAndDeductStock(Shipment shipment) {
+        log.info("Starting FIFO sourcing for shipment #{}", shipment.getShipmentId());
+
+        // 1. Aggregate Demand
+        List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipment.getShipmentId());
+        java.util.Map<Long, java.math.BigDecimal> productDemands = new java.util.HashMap<>();
+
+        for (StoreOrder order : orders) {
+            for (OrderDetail detail : order.getOrderDetails()) {
+                Long productId = detail.getProduct().getId();
+                java.math.BigDecimal qty = java.math.BigDecimal.valueOf(detail.getQuantity());
+                productDemands.merge(productId, qty, java.math.BigDecimal::add);
+            }
+        }
+
+        if (productDemands.isEmpty()) return;
+
+        // 2. Lock & Sourcing from Kitchen Warehouse (Assume 1st warehouse for simplicity or specific one)
+        KitchenWarehouse kitchenWarehouse = kitchenWarehouseRepository.findById(1L)
+                .orElseThrow(() -> new ResourceNotFoundException("Central Kitchen Warehouse not found"));
+
+        List<Long> productIds = new java.util.ArrayList<>(productDemands.keySet());
+        List<KitchenStockItem> stocks = kitchenStockItemRepository.lockProductsForDeduction(kitchenWarehouse.getWarehouseId(), productIds);
+
+        // 3. FIFO Logic
+        for (java.util.Map.Entry<Long, java.math.BigDecimal> entry : productDemands.entrySet()) {
+            Long productId = entry.getKey();
+            java.math.BigDecimal remainingDemand = entry.getValue();
+
+            List<KitchenStockItem> productStocks = stocks.stream()
+                    .filter(s -> s.getProduct().getId().equals(productId))
+                    .collect(java.util.stream.Collectors.toList());
+
+            for (KitchenStockItem stock : productStocks) {
+                if (remainingDemand.compareTo(java.math.BigDecimal.ZERO) <= 0) break;
+
+                java.math.BigDecimal deductQty = stock.getQuantity().min(remainingDemand);
+                stock.setQuantity(stock.getQuantity().subtract(deductQty));
+                remainingDemand = remainingDemand.subtract(deductQty);
+
+                // Create Sourcing Record for traceability
+                ShipmentSourcingRecord record = ShipmentSourcingRecord.builder()
+                        .shipment(shipment)
+                        .product(stock.getProduct())
+                        .quantity(deductQty)
+                        .expiryDate(stock.getExpiryDate())
+                        .productionPlan(stock.getProductionPlan())
+                        .build();
+                shipmentSourcingRecordRepository.save(record);
+
+                // Log Transaction
+                InventoryTransaction transaction = InventoryTransaction.builder()
+                        .product(stock.getProduct())
+                        .quantity(deductQty.negate())
+                        .type(InventoryTransactionType.SHIPMENT_OUT)
+                        .refId(shipment.getShipmentId())
+                        .kitchenWarehouse(kitchenWarehouse)
+                        .expiryDate(stock.getExpiryDate())
+                        .productionPlan(stock.getProductionPlan())
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                inventoryTransactionRepository.save(transaction);
+            }
+
+            if (remainingDemand.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                throw new IllegalStateException("Insufficient stock in kitchen for product ID: " + productId + ". Missing: " + remainingDemand);
+            }
+        }
+        kitchenStockItemRepository.saveAll(stocks);
+    }
+
+    private void confirmAndTransferStock(Shipment shipment) {
+        log.info("Transferring sourced stock to store #{} for shipment #{}", shipment.getStore().getStoreId(), shipment.getShipmentId());
+
+        StoreWarehouse storeWarehouse = storeWarehouseRepository.findByStore_StoreId(shipment.getStore().getStoreId())
+                .orElseThrow(() -> new ResourceNotFoundException("Warehouse not found for store ID: " + shipment.getStore().getStoreId()));
+
+        List<ShipmentSourcingRecord> records = shipmentSourcingRecordRepository.findByShipment_ShipmentId(shipment.getShipmentId());
+
+        for (ShipmentSourcingRecord record : records) {
+            // Add to Store Stock
+            StoreStockItem storeStock = StoreStockItem.builder()
+                    .warehouse(storeWarehouse)
+                    .product(record.getProduct())
+                    .quantity(record.getQuantity())
+                    .expiryDate(record.getExpiryDate())
+                    .productionPlan(record.getProductionPlan())
+                    .build();
+            storeStockItemRepository.save(storeStock);
+
+            // Log Transaction for Store
+            InventoryTransaction transaction = InventoryTransaction.builder()
+                    .product(record.getProduct())
+                    .quantity(record.getQuantity())
+                    .type(InventoryTransactionType.SHIPMENT_IN)
+                    .refId(shipment.getShipmentId())
+                    .storeWarehouse(storeWarehouse)
+                    .expiryDate(record.getExpiryDate())
+                    .productionPlan(record.getProductionPlan())
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            inventoryTransactionRepository.save(transaction);
+        }
+
+        // --- UPDATE INVOICE STATUS ---
+        List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipment.getShipmentId());
+        for (StoreOrder order : orders) {
+            if (order.getInvoice() != null) {
+                Invoice invoice = order.getInvoice();
+                invoice.setStatus(InvoiceStatus.FULFILLED);
+                invoiceRepository.save(invoice);
+            }
+        }
     }
 }

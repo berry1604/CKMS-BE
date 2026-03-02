@@ -49,4 +49,16 @@ public interface KitchenStockItemRepository extends JpaRepository<KitchenStockIt
     List<KitchenStockItem> lockMaterialsForDeduction(
             @Param("warehouseId") Long warehouseId,
             @Param("materialIds") List<Long> materialIds);
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        SELECT k FROM KitchenStockItem k
+        WHERE k.warehouse.warehouseId = :warehouseId
+        AND k.product.id IN :productIds
+        ORDER BY k.product.id ASC,
+                 k.expiryDate ASC NULLS LAST,
+                 k.id ASC
+    """)
+    List<KitchenStockItem> lockProductsForDeduction(
+            @Param("warehouseId") Long warehouseId,
+            @Param("productIds") List<Long> productIds);
 }
