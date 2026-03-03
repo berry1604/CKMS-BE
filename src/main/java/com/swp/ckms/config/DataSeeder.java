@@ -23,6 +23,8 @@ import com.swp.ckms.repository.KitchenWarehouseRepository;
 import com.swp.ckms.repository.PrivilegeRepository;
 import com.swp.ckms.repository.RoleRepository;
 import com.swp.ckms.repository.StoreWarehouseRepository;
+import com.swp.ckms.repository.PaymentMethodRepository;
+import com.swp.ckms.entity.PaymentMethod;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -42,6 +44,7 @@ public class DataSeeder implements CommandLineRunner {
     private final KitchenWarehouseRepository warehouseRepository;
     private final FranchiseStoreRepository franchiseStoreRepository;
     private final StoreWarehouseRepository storeWarehouseRepository;
+    private final PaymentMethodRepository paymentMethodRepository;
 
     @Override
     @Transactional
@@ -53,6 +56,8 @@ public class DataSeeder implements CommandLineRunner {
         
         // Now seed users and attach them to stores
         seedUsersAndRoles(allPrivileges);
+
+        seedPaymentMethods();
     }
 
     private Set<Privilege> seedPrivileges() {
@@ -203,6 +208,18 @@ public class DataSeeder implements CommandLineRunner {
                     .maxCapacity(java.math.BigDecimal.valueOf(1000))
                     .build());
             System.out.println(">>> Seeded default Store Warehouse");
+        }
+    }
+
+    private void seedPaymentMethods() {
+        String[] methods = {"CASH", "BANK_TRANSFER"};
+        for (String methodName : methods) {
+            if (paymentMethodRepository.findByName(methodName).isEmpty()) {
+                paymentMethodRepository.save(PaymentMethod.builder()
+                        .name(methodName)
+                        .build());
+                System.out.println(">>> Seeded Payment Method: " + methodName);
+            }
         }
     }
 }
