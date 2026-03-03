@@ -22,7 +22,7 @@ public class RecipeController {
     private final RecipeService recipeService;
 
     @PostMapping
-    @PreAuthorize("hasAuthority('MANAGE_CATALOG')")
+    @PreAuthorize("hasAuthority('MANAGE_CATALOG') or hasAuthority('CREATE_RECIPE')")
     public ResponseEntity<ApiResponse<RecipeResponse>> createRecipe(
             @Valid @RequestBody RecipeRequest request,
             Principal principal) {

@@ -377,7 +377,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                         .shipment(shipment)
                         .product(stock.getProduct())
                         .quantity(deductQty)
-                        .expiryDate(stock.getExpiryDate())
+                        .expiryDate(stock.getExpiryDate() != null ? stock.getExpiryDate() : java.time.LocalDate.now().plusDays(3))
                         .productionPlan(stock.getProductionPlan())
                         .build();
                 shipmentSourcingRecordRepository.save(record);

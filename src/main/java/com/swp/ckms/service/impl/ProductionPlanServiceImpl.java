@@ -481,6 +481,12 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
 
                 stockItem.setQuantity(stockItem.getQuantity().add(producedQty));
                 stockItem.setProductionPlan(plan); // Tag with the plan that produced it
+                
+                // BR-05: Set default expiry date for produced items (e.g., 3 days from production date)
+                if (plan.getPlannedDate() != null) {
+                    stockItem.setExpiryDate(plan.getPlannedDate().plusDays(3));
+                }
+                
                 kitchenStockItemRepository.save(stockItem);
 
                 // Audit: Record Transaction
@@ -490,6 +496,7 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                         .product(product) // Set product field
                         .quantity(producedQty)
                         .refId(planId)
+                        .expiryDate(stockItem.getExpiryDate())
                         .note("Thêm thành phẩm từ kế hoạch sản xuất: " + plan.getBatchCode())
                         .build();
                 inventoryTransactionRepository.save(tx);

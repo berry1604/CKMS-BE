@@ -32,7 +32,7 @@ public class ShipmentSourcingRecord {
     @Column(nullable = false)
     private BigDecimal quantity;
 
-    @Column(nullable = false)
+    @Column(name = "expiry_date")
     private LocalDate expiryDate;
 
     // The original production plan ID for traceability

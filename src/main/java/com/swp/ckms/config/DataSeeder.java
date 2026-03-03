@@ -66,9 +66,13 @@ public class DataSeeder implements CommandLineRunner {
     }
 
     private void seedUsersAndRoles(Set<Privilege> allPrivileges) {
+        // 0. Fetch default kitchen and store for attachment
+        CentralKitchen defaultKitchen = centralKitchenRepository.findById(1L).orElse(null);
+        FranchiseStore defaultStore = franchiseStoreRepository.findById(1L).orElse(null);
+
         // 1. ADMIN - Toàn quyền hệ thống & RBAC
         Role adminRole = seedRole("ADMIN", allPrivileges);
-        seedUser("admin", "admin@ckms.com", "admin", "System Administrator", adminRole, null);
+        seedUser("admin", "admin@ckms.com", "admin", "System Administrator", adminRole, null, null);
 
         // 2. MANAGER - Giám sát vận hành, Catalog, Recipe & Reports
         Set<String> managerCodes = new HashSet<>(Arrays.asList(
@@ -77,26 +81,28 @@ public class DataSeeder implements CommandLineRunner {
                 "VIEW_PRODUCT", "CREATE_PRODUCT", "UPDATE_PRODUCT",
                 "VIEW_RECIPE", "CREATE_RECIPE", "UPDATE_RECIPE",
                 "VIEW_KITCHEN_INVENTORY", "VIEW_STORE_INVENTORY",
-                "VIEW_BILLING", "VIEW_INVOICE", "VIEW_REPORTS", "VIEW_DASHBOARD"
+                "VIEW_BILLING", "VIEW_INVOICE", "VIEW_REPORTS", "VIEW_DASHBOARD",
+                "VIEW_STORE_ORDER", "APPROVE_STORE_ORDER", "MANAGE_STORES"
         ));
         Set<Privilege> managerPrivileges = allPrivileges.stream()
                 .filter(p -> managerCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role managerRole = seedRole("MANAGER", managerPrivileges);
-        seedUser("manager", "manager@ckms.com", "manager", "Operation Manager", managerRole, null);
+        seedUser("manager", "manager@ckms.com", "manager", "Operation Manager", managerRole, null, defaultKitchen);
 
         // 3. COORDINATOR - Planning: Duyệt đơn, Lập kế hoạch, Giao hàng
         Set<String> coordinatorCodes = new HashSet<>(Arrays.asList(
                 "VIEW_STORE_ORDER", "APPROVE_STORE_ORDER", "UPDATE_STORE_ORDER",
                 "ORGANIZE_PRODUCTION", "CREATE_PRODUCTION_PLAN", "VIEW_PRODUCTION_PLAN", "UPDATE_PRODUCTION_PLAN",
-                "CREATE_SHIPMENT", "VIEW_SHIPMENT",
-                "VIEW_INVOICE", "VIEW_BILLING", "VIEW_KITCHEN_INVENTORY", "VIEW_DASHBOARD"
+                "CREATE_SHIPMENT", "START_SHIPMENT", "CANCEL_SHIPMENT", "VIEW_SHIPMENT",
+                "VIEW_INVOICE", "VIEW_BILLING", "VIEW_KITCHEN_INVENTORY", "VIEW_DASHBOARD",
+                "VIEW_RECIPE"
         ));
         Set<Privilege> coordinatorPrivileges = allPrivileges.stream()
                 .filter(p -> coordinatorCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role coordinatorRole = seedRole("COORDINATOR", coordinatorPrivileges);
-        seedUser("coordinator", "coordinator@ckms.com", "coordinator", "Supply Coordinator", coordinatorRole, null);
+        seedUser("coordinator", "coordinator@ckms.com", "coordinator", "Supply Coordinator", coordinatorRole, null, defaultKitchen);
 
         // 4. KITCHEN_STAFF - Execution: Sản xuất & Kho bếp
         Set<String> kitchenCodes = new HashSet<>(Arrays.asList(
@@ -108,7 +114,7 @@ public class DataSeeder implements CommandLineRunner {
                 .filter(p -> kitchenCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role kitchenStaffRole = seedRole("KITCHEN_STAFF", kitchenPrivileges);
-        seedUser("kitchenstaff", "kitchen@ckms.com", "staff", "Kitchen Execution Staff", kitchenStaffRole, null);
+        seedUser("kitchenstaff", "kitchen@ckms.com", "staff", "Kitchen Execution Staff", kitchenStaffRole, null, defaultKitchen);
 
         // 5. STORE_STAFF - Execution: Đặt hàng & Kho cửa hàng
         Set<String> storeStaffCodes = new HashSet<>(Arrays.asList(
@@ -121,9 +127,7 @@ public class DataSeeder implements CommandLineRunner {
                 .filter(p -> storeStaffCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role storeStaffRole = seedRole("STORE_STAFF", storeStaffPrivileges);
-        
-        FranchiseStore store = franchiseStoreRepository.findById(1L).orElse(null);
-        seedUser("storestaff", "storestaff@ckms.com", "staff", "Store Staff", storeStaffRole, store);
+        seedUser("storestaff", "storestaff@ckms.com", "staff", "Store Staff", storeStaffRole, defaultStore, null);
     }
 
     private Role seedRole(String roleName, Set<Privilege> privileges) {
@@ -138,20 +142,30 @@ public class DataSeeder implements CommandLineRunner {
                         .build()));
     }
 
-    private void seedUser(String username, String email, String password, String fullName, Role role, FranchiseStore store) {
-        if (!userRepository.existsByUsername(username)) {
-            userRepository.save(User.builder()
-                    .username(username)
-                    .email(email)
-                    .password(passwordEncoder.encode(password))
-                    .fullName(fullName)
-                    .status(com.swp.ckms.enums.UserStatus.ACTIVE)
-                    .role(role)
-                    .isActive(true)
-                    .store(store)
-                    .build());
-            System.out.println(">>> Seeded user: " + username);
-        }
+    private void seedUser(String username, String email, String password, String fullName, Role role, FranchiseStore store, CentralKitchen kitchen) {
+        userRepository.findByUsername(username).ifPresentOrElse(
+            user -> {
+                user.setStore(store);
+                user.setKitchen(kitchen);
+                user.setRole(role);
+                userRepository.save(user);
+                System.out.println(">>> Updated existing user: " + username);
+            },
+            () -> {
+                userRepository.save(User.builder()
+                        .username(username)
+                        .email(email)
+                        .password(passwordEncoder.encode(password))
+                        .fullName(fullName)
+                        .status(com.swp.ckms.enums.UserStatus.ACTIVE)
+                        .role(role)
+                        .isActive(true)
+                        .store(store)
+                        .kitchen(kitchen)
+                        .build());
+                System.out.println(">>> Seeded new user: " + username);
+            }
+        );
     }
 
     private void seedKitchenAndWarehouse() {
