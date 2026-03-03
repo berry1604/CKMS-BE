@@ -15,6 +15,8 @@ import java.time.LocalDateTime;
 public class BillingStatementSummaryResponse {
     private Long statementId;
     private String cycleName;
+    private BigDecimal orderTotal;
+    private BigDecimal shippingTotal;
     private BigDecimal totalAmount;
     private String status;
     private LocalDateTime issuedAt;

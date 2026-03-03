@@ -38,6 +38,10 @@ public class BillingStatement {
 
     private LocalDate cycleEnd;
 
+    private BigDecimal orderTotal;
+
+    private BigDecimal shippingTotal;
+
     private BigDecimal totalAmount;
 
     @Enumerated(EnumType.STRING)

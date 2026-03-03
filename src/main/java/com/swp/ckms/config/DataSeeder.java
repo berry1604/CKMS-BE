@@ -82,7 +82,8 @@ public class DataSeeder implements CommandLineRunner {
                 "VIEW_RECIPE", "CREATE_RECIPE", "UPDATE_RECIPE",
                 "VIEW_KITCHEN_INVENTORY", "VIEW_STORE_INVENTORY",
                 "VIEW_BILLING", "VIEW_INVOICE", "VIEW_REPORTS", "VIEW_DASHBOARD",
-                "VIEW_STORE_ORDER", "APPROVE_STORE_ORDER", "MANAGE_STORES"
+                "VIEW_STORE_ORDER", "APPROVE_STORE_ORDER", "MANAGE_STORES",
+                "PAY_BILLING", "CONFIRM_PAYMENT"
         ));
         Set<Privilege> managerPrivileges = allPrivileges.stream()
                 .filter(p -> managerCodes.contains(p.getCode()))
@@ -96,7 +97,7 @@ public class DataSeeder implements CommandLineRunner {
                 "ORGANIZE_PRODUCTION", "CREATE_PRODUCTION_PLAN", "VIEW_PRODUCTION_PLAN", "UPDATE_PRODUCTION_PLAN",
                 "CREATE_SHIPMENT", "START_SHIPMENT", "CANCEL_SHIPMENT", "VIEW_SHIPMENT",
                 "VIEW_INVOICE", "VIEW_BILLING", "VIEW_KITCHEN_INVENTORY", "VIEW_DASHBOARD",
-                "VIEW_RECIPE"
+                "VIEW_RECIPE", "PAY_BILLING", "CONFIRM_PAYMENT"
         ));
         Set<Privilege> coordinatorPrivileges = allPrivileges.stream()
                 .filter(p -> coordinatorCodes.contains(p.getCode()))

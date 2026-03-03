@@ -20,4 +20,6 @@ public interface BillingStatementService {
     Page<BillingStatementSummaryResponse> getStatements(Long storeId, BillingStatementStatus status, Pageable pageable);
     BillingStatementDetailResponse getStatementById(Long id);
     PaymentStatementResponse payStatement(Long id, PaymentStatementRequest request);
+    
+    void deleteStatement(Long id);
 }

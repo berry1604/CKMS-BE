@@ -32,12 +32,14 @@ public interface BillingStatementRepository extends JpaRepository<BillingStateme
 
     @Query("""
             SELECT new com.swp.ckms.dto.response.BillingStatementSummaryResponse(
-                b.statementId,
-                CONCAT('Kỳ T', DATE_FORMAT(b.cycleStart, '%m/%Y')),
-                b.totalAmount,
-                CAST(b.status AS string),
-                b.issuedAt
-            )
+                    b.statementId,
+                    TO_CHAR(b.cycleStart, 'MM/YYYY'),
+                    b.orderTotal,
+                    b.shippingTotal,
+                    b.totalAmount,
+                    CAST(b.status AS string),
+                    b.issuedAt
+                )
             FROM BillingStatement b
             WHERE (:storeId IS NULL OR b.store.storeId = :storeId)
             AND (:status IS NULL OR b.status = :status)

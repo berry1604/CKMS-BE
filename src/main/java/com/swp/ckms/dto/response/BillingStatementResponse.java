@@ -18,6 +18,8 @@ public class BillingStatementResponse {
     private String cycleName;
     private LocalDate periodStart;
     private LocalDate periodEnd;
+    private BigDecimal orderTotal;
+    private BigDecimal shippingTotal;
     private BigDecimal totalAmount;
     private String status;
     private int invoiceCount;
