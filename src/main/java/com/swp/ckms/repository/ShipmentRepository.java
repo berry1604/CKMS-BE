@@ -19,4 +19,7 @@ public interface ShipmentRepository extends JpaRepository<Shipment, Long> {
     Page<Shipment> findByStore_StoreIdAndStatus(Long storeId, ShipmentStatus status, Pageable pageable);
 
     List<Shipment> findByProductionPlan_PlanId(Long planId);
+
+    List<Shipment> findAllByStore_StoreIdAndStatusAndDeliveredAtBetween(
+            Long storeId, ShipmentStatus status, java.time.LocalDateTime start, java.time.LocalDateTime end);
 }

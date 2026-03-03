@@ -112,4 +112,17 @@ public class BillingStatementController {
                         .timestamp(java.time.LocalDateTime.now())
                         .build());
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('CONFIRM_PAYMENT')")
+    public ResponseEntity<ApiResponse<Void>> deleteStatement(@PathVariable Long id) {
+        billingStatementService.deleteStatement(id);
+        
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(ApiResponse.<Void>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("Billing statement deleted and invoices released successfully")
+                        .timestamp(java.time.LocalDateTime.now())
+                        .build());
+    }
 }

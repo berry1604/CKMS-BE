@@ -19,6 +19,8 @@ public class BillingStatementDetailResponse {
     private StoreSimpleResponse store;
     private LocalDate periodStart;
     private LocalDate periodEnd;
+    private BigDecimal orderTotal;
+    private BigDecimal shippingTotal;
     private BigDecimal totalAmount;
     private String status;
     private LocalDateTime paidAt;

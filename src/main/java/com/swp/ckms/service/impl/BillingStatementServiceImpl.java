@@ -49,6 +49,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     private final InvoiceRepository invoiceRepository;
     private final FranchiseStoreRepository franchiseStoreRepository;
     private final PaymentMethodRepository paymentMethodRepository;
+    private final com.swp.ckms.repository.ShipmentRepository shipmentRepository;
 
     @Override
     @Transactional
@@ -68,17 +69,30 @@ public class BillingStatementServiceImpl implements BillingStatementService {
         LocalDateTime startDateTime = periodStart.atStartOfDay();
         LocalDateTime endDateTime = periodEnd.atTime(LocalTime.MAX);
 
-        List<Invoice> invoices = invoiceRepository.findByOrder_Store_StoreIdAndStatusAndIssuedAtBetween(
-                storeId, InvoiceStatus.PENDING, startDateTime, endDateTime);
+        List<InvoiceStatus> targetStatuses = List.of(InvoiceStatus.PENDING, InvoiceStatus.FULFILLED);
+        List<Invoice> invoices = invoiceRepository.findByOrder_Store_StoreIdAndStatusInAndIssuedAtBetween(
+                storeId, targetStatuses, startDateTime, endDateTime);
 
-        BigDecimal totalAmount = invoices.stream()
+        BigDecimal orderTotal = invoices.stream()
                 .map(Invoice::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // Fetch shipments for shipping fees
+        List<com.swp.ckms.entity.Shipment> shipments = shipmentRepository.findAllByStore_StoreIdAndStatusAndDeliveredAtBetween(
+                storeId, com.swp.ckms.enums.ShipmentStatus.DELIVERED, startDateTime, endDateTime);
+
+        BigDecimal shippingTotal = shipments.stream()
+                .map(s -> s.getShippingFee() != null ? s.getShippingFee() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalAmount = orderTotal.add(shippingTotal);
 
         BillingStatement statement = BillingStatement.builder()
                 .store(store)
                 .cycleStart(periodStart)
                 .cycleEnd(periodEnd)
+                .orderTotal(orderTotal)
+                .shippingTotal(shippingTotal)
                 .totalAmount(totalAmount)
                 .status(BillingStatementStatus.ISSUED)
                 .build();
@@ -102,6 +116,8 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .cycleName(cycleName)
                 .periodStart(periodStart)
                 .periodEnd(periodEnd)
+                .orderTotal(orderTotal)
+                .shippingTotal(shippingTotal)
                 .totalAmount(totalAmount)
                 .status(savedStatement.getStatus().name())
                 .invoiceCount(invoices.size())
@@ -136,23 +152,36 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 LocalDateTime startDateTime = periodStart.atStartOfDay();
                 LocalDateTime endDateTime = periodEnd.atTime(LocalTime.MAX);
 
+                List<InvoiceStatus> targetStatuses = List.of(InvoiceStatus.PENDING, InvoiceStatus.FULFILLED);
                 // Pesimistic lock is handled by InvoiceRepository method
-                List<Invoice> invoices = invoiceRepository.findByOrder_Store_StoreIdAndStatusAndIssuedAtBetween(
-                        storeId, InvoiceStatus.PENDING, startDateTime, endDateTime);
+                List<Invoice> invoices = invoiceRepository.findByOrder_Store_StoreIdAndStatusInAndIssuedAtBetween(
+                        storeId, targetStatuses, startDateTime, endDateTime);
 
                 if (invoices.isEmpty()) {
                     storesSkippedNoInvoices++;
                     continue;
                 }
 
-                BigDecimal totalAmount = invoices.stream()
+                BigDecimal orderTotal = invoices.stream()
                         .map(Invoice::getAmount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                // Fetch shipments for shipping fees
+                List<com.swp.ckms.entity.Shipment> shipments = shipmentRepository.findAllByStore_StoreIdAndStatusAndDeliveredAtBetween(
+                        storeId, com.swp.ckms.enums.ShipmentStatus.DELIVERED, startDateTime, endDateTime);
+
+                BigDecimal shippingTotal = shipments.stream()
+                        .map(s -> s.getShippingFee() != null ? s.getShippingFee() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                BigDecimal totalAmount = orderTotal.add(shippingTotal);
 
                 BillingStatement statement = BillingStatement.builder()
                         .store(store)
                         .cycleStart(periodStart)
                         .cycleEnd(periodEnd)
+                        .orderTotal(orderTotal)
+                        .shippingTotal(shippingTotal)
                         .totalAmount(totalAmount)
                         .status(BillingStatementStatus.ISSUED)
                         .build();
@@ -238,6 +267,8 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .store(storeSimple)
                 .periodStart(billingStatement.getCycleStart())
                 .periodEnd(billingStatement.getCycleEnd())
+                .orderTotal(billingStatement.getOrderTotal())
+                .shippingTotal(billingStatement.getShippingTotal())
                 .totalAmount(billingStatement.getTotalAmount())
                 .status(billingStatement.getStatus().name())
                 .paidAt(billingStatement.getPaidAt())
@@ -286,5 +317,27 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .paidAt(statement.getPaidAt())
                 .transactionReference(statement.getTransactionReference())
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public void deleteStatement(Long id) {
+        BillingStatement statement = billingStatementRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Billing statement not found"));
+
+        if (statement.getStatus() == BillingStatementStatus.PAID) {
+            throw new InvalidRequestException("Cannot delete a PAID billing statement");
+        }
+
+        // Release associated invoices
+        List<Invoice> invoices = invoiceRepository.findByStatement_StatementId(id);
+        for (Invoice invoice : invoices) {
+            invoice.setStatus(InvoiceStatus.FULFILLED); // Revert to fulfilled so it can be picked up again
+            invoice.setStatement(null);
+        }
+        invoiceRepository.saveAll(invoices);
+
+        billingStatementRepository.delete(statement);
+        log.info("Deleted Billing Statement #{} and released {} invoices", id, invoices.size());
     }
 }

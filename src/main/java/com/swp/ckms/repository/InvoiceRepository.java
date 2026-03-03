@@ -17,9 +17,11 @@ import java.util.List;
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     boolean existsByOrder_OrderId(Long orderId);
 
+    List<Invoice> findByStatement_StatementId(Long statementId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    List<Invoice> findByOrder_Store_StoreIdAndStatusAndIssuedAtBetween(
-            Long storeId, InvoiceStatus status, java.time.LocalDateTime start, java.time.LocalDateTime end);
+    List<Invoice> findByOrder_Store_StoreIdAndStatusInAndIssuedAtBetween(
+            Long storeId, List<InvoiceStatus> statuses, java.time.LocalDateTime start, java.time.LocalDateTime end);
 
     @Query("""
         SELECT new com.swp.ckms.dto.response.InvoiceDetailResponse(
@@ -37,12 +39,12 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @Modifying
     @Query("""
         UPDATE Invoice i
-        SET i.status = :status
+        SET i.status = :targetStatus
         WHERE i.statement.statementId = :statementId
-          AND i.status = 'IN_STATEMENT'
+          AND i.status = com.swp.ckms.enums.InvoiceStatus.IN_STATEMENT
     """)
     int bulkMarkAsPaid(
         @Param("statementId") Long statementId,
-        @Param("status") InvoiceStatus status
+        @Param("targetStatus") InvoiceStatus targetStatus
     );
 }
