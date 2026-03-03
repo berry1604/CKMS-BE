@@ -19,7 +19,7 @@ public class ProductionPlanController {
     private final ProductionPlanService productionPlanService;
 
     @PostMapping
-    @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION')")
+    @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION') or hasAuthority('CREATE_PRODUCTION_PLAN')")
     public ResponseEntity<ProductionPlanResponse> createProductionPlan(
             @Valid @RequestBody ProductionPlanRequest request) {
         

@@ -1,21 +1,21 @@
 # Kịch bản Kiểm thử End-to-End: Bán thành phẩm Bò Beefsteak
 
-Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng nghiệp vụ hoàn chỉnh cho sản phẩm **"Bò Beefsteak Sơ chế"** (Bán thành phẩm).
+Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng nghiệp vụ hoàn chỉnh cho sản phẩm **"Bò Beefsteak Sơ chế"** (Bán thành phẩm) dựa trên mã nguồn và SRS hiện tại.
 
 ---
 
-## Giai đoạn 1: Thiết lập Danh mục & Công thức (Manager)
+## Giai đoạn 1: Thiết lập Danh mục & Công thức (Manager / Admin)
 
 ### 1.1 Tạo Danh mục & Nguyên liệu
-- **Actor**: `Manager` (Có quyền `MANAGE_CATALOG`, `CREATE_CATEGORY`, `CREATE_MATERIAL`)
+- **Actor**: `Manager` hoặc `Admin` (Quyền: `MANAGE_CATALOG`)
 - **Tạo Danh mục "Thịt Sơ Chế"**:
   - `POST /api/v1/categories` -> `{"name": "Thịt Sơ Chế"}` (Lấy `categoryId: 5`)
 - **Tạo các Nguyên liệu thô**:
   - `POST /api/v1/materials` -> `{"name": "Thịt bò thăn", "unit": "KG"}` (Lấy `matId: 10`)
   - `POST /api/v1/materials` -> `{"name": "Gia vị Beefsteak", "unit": "GOI"}` (Lấy `matId: 11`)
 
-### 1.2 [QUAN TRỌNG] Thiết lập Định mức Công thức (Recipe)
-- **Actor**: `Manager` (Có quyền `CREATE_PRODUCT`, `CREATE_RECIPE`)
+### 1.2 Thiết lập Sản phẩm & Công thức (Recipe)
+- **Actor**: `Manager` hoặc `Admin` (Quyền: `MANAGE_CATALOG`)
 - **Tạo Sản phẩm "Bò Beefsteak Sơ chế"**:
   - `POST /api/v1/products`
   - Body: `{"name": "Bò Beefsteak Sơ chế", "categoryId": 5, "price": 150000, "unit": "PHAN"}` (Lấy `productId: 20`)
@@ -25,22 +25,21 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
     ```json
     {
       "productId": 20,
+      "recipeName": "Công thức Bò Beefsteak Chuẩn",
       "details": [
         {"materialId": 10, "quantityNeeded": 0.25}, 
         {"materialId": 11, "quantityNeeded": 1}
       ]
     }
     ```
-- **Ý nghĩa Công Thức**:
-  - **Định mức**: 1 phần bò cần **0.25kg** Thăn bò và **1 gói** Gia vị.
-  - **Sử dụng**: Công thức này được hệ thống dùng để tính toán tồn kho khi Lập kế hoạch (Giai đoạn 3.2).
+- **Ý nghĩa**: Định mức 1 phần bò cần **0.25kg** Thăn bò và **1 gói** Gia vị.
 
 ---
 
 ## Giai đoạn 2: Quản lý Kho & Đặt hàng (Coordinator & Store Staff)
 
 ### 2.1 Nhập kho nguyên liệu tại Bếp
-- **Actor**: `Manager` hoặc `Coordinator` (Có quyền `VIEW_KITCHEN_INVENTORY`)
+- **Actor**: `Kitchen Staff` hoặc `Admin` (Quyền: `UPDATE_KITCHEN_INVENTORY`)
 - **Nhập 50kg thịt và 200 gói gia vị**:
   - `POST /api/v1/kitchen-inventory/{warehouseId}/import/materials`
   - Body: 
@@ -52,54 +51,74 @@ Kịch bản này hướng dẫn chi tiết cách thực hiện một luồng ng
     ```
 
 ### 2.2 Cửa hàng đặt hàng
-- **Actor**: `Store Staff` (Có quyền `CREATE_STORE_ORDER`)
-- **Kiểm tra Sức chứa (BR-01)**: 
-  - Hệ thống kiểm tra: `Tồn kho tại Store + 40 phần Bò` có vượt quá `maxCapacity` của kho Store không.
-  - Dự kiến: Nếu kho Store có sức chứa > 40 -> **Thành công**.
+- **Actor**: `Store Staff` (Quyền: `CREATE_STORE_ORDER`)
 - **Đặt 40 phần Bò Beefsteak Sơ chế**:
   - `POST /api/v1/orders`
   - Body: `{"storeId": 1, "items": [{"productId": 20, "quantity": 40}]}`
   - **Kết quả**: Đơn hàng `#ORD-100` được tạo, trạng thái `SUBMITTED`.
+- **Kiểm tra BR-01**: Tổng giá trị đơn hàng phải đạt mức tối thiểu (nếu có cấu hình).
 
 ---
 
 ## Giai đoạn 3: Phê duyệt & Sản xuất (Coordinator & Kitchen Staff)
 
 ### 3.1 Duyệt đơn hàng
-- **Coordinator duyệt đơn**:
+- **Actor**: `Coordinator` (Quyền: `APPROVE_STORE_ORDER`)
+- **Duyệt đơn**:
   - `PATCH /api/v1/orders/100/status` -> `{"status": "CONFIRMED"}`
-  - **Hệ thống**: Tự động tạo Invoice số tiền `40 phần * 150.000 = 6.000.000 VNĐ`.
+  - **Hệ thống**: Tự động tạo Invoice.
 
 ### 3.2 Lập kế hoạch sản xuất
-- **Actor**: `Coordinator` (Có quyền `CREATE_PRODUCTION_PLAN`)
-- **Kiểm tra Công suất (BR-02)**:
-  - Hệ thống kiểm tra tổng Quantity các Plan trong ngày `2026-03-05` của Bếp Trung tâm.
-  - Dự kiến: Nếu `Tổng tải hiện tại + 40` <= `maxDailyCapacity` (10,000) -> **Thành công**.
-- **Tạo kế hoạch cho Đơn hàng #100**:
+- **Actor**: `Coordinator` (Quyền: `ORGANIZE_PRODUCTION`)
+- **Tạo kế hoạch**:
   - `POST /api/v1/production-plans` 
   - Body: `{"storeOrderIds": [100], "plannedDate": "2026-03-05"}` (Lấy `planId: 50`)
-  - **Hệ thống Snapshot**: Tự động tra cứu Công thức của Sản phẩm 20 và lưu lại mức cần dùng: 40 phần * 0.25 = **10kg Thăn bò**.
 - **Chuyển sang Sẵn sàng (Ready)**:
   - `PUT /api/v1/production-plans/50/ready`
-  - **Hệ thống**: Kiểm tra kho bếp: Cần **10kg thịt bò** (theo định mức recipe). Hiện có 50kg -> **OK**.
+  - **Hệ thống**: Kiểm tra tồn kho nguyên liệu. Cần 10kg thịt và 40 gói gia vị.
 
 ### 3.3 Thực thi sản xuất
-- **Actor**: `Kitchen Staff` (Có quyền `EXECUTE_PRODUCTION`, `UPDATE_PRODUCTION_PLAN`)
+- **Actor**: `Kitchen Staff` (Quyền: `EXECUTE_PRODUCTION`)
 - **Bắt đầu**: `POST /api/v1/production-plans/50/start`.
 - **Hoàn thành**: `POST /api/v1/production-plans/50/finish`.
-  - **Kiểm tra tràn kho bếp**: 
-    - Hệ thống kiểm tra: `Tồn kho Bếp hiện tại + 40 phần thành phẩm` có vượt quá `maxCapacity` kho Bếp không.
   - **Tác động kho**: 
-    - Kho thịt bò giảm 10kg (Từ 50kg xuống 40kg).
-    - Kho gia vị giảm 40 gói (Từ 200 gói xuống 160 gói).
-    - Kho Bếp trung tâm tăng thêm **40 phần "Bò Beefsteak Sơ chế"**.
+    - Kho nguyên liệu giảm (10kg thịt, 40 gói gia vị).
+    - Kho Bếp trung tâm tăng **40 phần "Bò Beefsteak Sơ chế"**.
 
 ---
 
-## Giai đoạn 4: Thanh toán (Manager / Admin)
+## Giai đoạn 4: Giao hàng & Nhận hàng (Coordinator & Store Staff)
 
-### 4.1 Tạo Bảng kê & Tất toán
-- **Actor**: `Manager` hoặc `Admin` (Có quyền `VIEW_BILLING`)
-- **Gom hóa đơn vào bảng kê**: `POST /api/v1/billing-statements/generate`.
-- **Xác nhận thanh toán**: `PATCH /api/v1/billing-statements/{id}/pay`.
-  - **Kết quả cuối cùng**: Luồng đi từ nguyên liệu sống -> bán thành phẩm tẩm ướp -> xuất hóa đơn -> thu tiền hoàn tất.
+### 4.1 Tạo Shipment
+- **Actor**: `Coordinator` (Quyền: `CREATE_SHIPMENT`)
+- **Tạo vận đơn**:
+  - `POST /api/v1/shipments`
+  - Body: `{"productionPlanId": 50, "storeId": 1, "storeOrderIds": [100], "driverName": "Nguyễn Văn A"}` (Lấy `shipmentId: 80`)
+
+### 4.2 Chuẩn bị hàng & Xuất kho
+- **Actor**: `Kitchen Staff` (Quyền: `PREPARE_SHIPMENT`):
+  - `PATCH /api/v1/shipments/80/prepare` -> Trạng thái `PREPARED`.
+- **Actor**: `Coordinator` (Quyền: `START_SHIPMENT`):
+  - `PATCH /api/v1/shipments/80/transit` -> Trạng thái `IN_TRANSIT`.
+
+### 4.3 Xác nhận nhận hàng
+- **Actor**: `Store Staff` (Quyền: `CONFIRMED_SHIPMENT`)
+- **Xác nhận**: `PATCH /api/v1/shipments/80/confirm`
+- **Kết quả**: 
+  - Trạng thái Shipment -> `DELIVERED`.
+  - Trạng thái Order ORD-100 -> `COMPLETED`.
+  - **Tồn kho Cửa hàng** tăng thêm 40 phần bò.
+
+---
+
+## Giai đoạn 5: Thanh toán & Tất toán (Admin / Manager)
+
+### 5.1 Tạo Bảng kê (Billing Statement)
+- **Actor**: `Admin` (Quyền: `CONFIRM_PAYMENT`)
+- **Gom hóa đơn**: `POST /api/v1/billing-statements/generate?storeId=1&periodStart=2026-03-01&periodEnd=2026-03-31`.
+
+### 5.2 Xác nhận thanh toán
+- **Actor**: `Admin` (Quyền: `CONFIRM_PAYMENT`)
+- **Tất toán**: `PATCH /api/v1/billing-statements/{id}/pay`
+  - Body: `{"paymentMethod": "BANK_TRANSFER", "transactionId": "TX12345"}`
+- **Kết quả cuối cùng**: Hoàn tất luồng từ nguyên liệu thô đến thu tiền thực tế.
