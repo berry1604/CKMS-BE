@@ -111,7 +111,7 @@ Kịch bản này được thiết kế để kiểm thử toàn bộ luồng ng
 ### 5.1 Tạo Bảng kê & Thanh toán
 - **Actor**: `Admin` (Quyền: `CONFIRM_PAYMENT`)
 - **Gom hóa đơn (Manual)**:
-  - `POST /api/v1/billing-statements/generate?storeId=1&periodStart=2026-03-01&periodEnd=2026-03-31`
+  - `POST /api/v1/billing-statements/generate?storeId=1&periodStart=2026-03-01&periodEnd=z`
 - **Xác nhận thanh toán**:
   - `PATCH /api/v1/billing-statements/{id}/pay`
   - Body: 

@@ -3,10 +3,14 @@ package com.swp.ckms.service.impl;
 import com.swp.ckms.dto.request.*;
 import com.swp.ckms.dto.response.CreateUserResponse;
 import com.swp.ckms.dto.response.UserResponse;
+import com.swp.ckms.entity.CentralKitchen;
+import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.User;
 import com.swp.ckms.enums.UserStatus;
 import com.swp.ckms.event.UserCreatedEvent;
 import com.swp.ckms.entity.Role;
+import com.swp.ckms.repository.CentralKitchenRepository;
+import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.RoleRepository;
 import com.swp.ckms.repository.UserRepository;
 import com.swp.ckms.service.EmailService;
@@ -40,6 +44,8 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final FranchiseStoreRepository franchiseStoreRepository;
+    private final CentralKitchenRepository centralKitchenRepository;
     private final EmailService emailService;
     private final ApplicationEventPublisher eventPublisher;
     private final PasswordEncoder passwordEncoder;
@@ -64,6 +70,20 @@ public class UserServiceImpl implements UserService {
         Role role = roleRepository.findById(request.getRoleId())
                 .orElseThrow(() -> new RuntimeException("Role not found"));
 
+        // Fetch Store if provided
+        FranchiseStore store = null;
+        if (request.getStoreId() != null) {
+            store = franchiseStoreRepository.findById(request.getStoreId())
+                    .orElseThrow(() -> new RuntimeException("Store not found"));
+        }
+
+        // Fetch Kitchen if provided
+        CentralKitchen kitchen = null;
+        if (request.getKitchenId() != null) {
+            kitchen = centralKitchenRepository.findById(request.getKitchenId())
+                    .orElseThrow(() -> new RuntimeException("Kitchen not found"));
+        }
+
         User user = User.builder()
                 .username(username)
                 .email(request.getEmail())
@@ -74,7 +94,8 @@ public class UserServiceImpl implements UserService {
                 .verificationTokenExpiresAt(LocalDateTime.now().plusHours(24))
                 .isActive(true)
                 .role(role)
-                // store and kitchen handling omitted for brevity as per plan default
+                .store(store)
+                .kitchen(kitchen)
                 .build();
 
         User savedUser = userRepository.save(user);
