@@ -284,7 +284,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             throw new IllegalArgumentException("Order is already processed or in an invalid state for update: " + order.getStatus());
         }
 
-        if (newStatus == OrderStatus.CONFIRMED) {
+        if (newStatus == OrderStatus.APPROVED) {
             // Anti-double-invoice check
             if (invoiceRepository.existsByOrder_OrderId(id)) {
                 throw new IllegalStateException("Invoice already exists for this order");
@@ -293,7 +293,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             User approvedBy = userRepository.findById(ctx.getUserId())
                     .orElseThrow(() -> new ResourceNotFoundException("Approver not found"));
 
-            order.setStatus(OrderStatus.CONFIRMED);
+            order.setStatus(OrderStatus.APPROVED); // Duyệt đơn là đưa vào hàng chờ Scheduled
             order.setApprovedByUser(approvedBy);
             order.setApprovedAt(LocalDateTime.now());
 
