@@ -1,5 +1,7 @@
 package com.swp.ckms.controller;
 
+import com.swp.ckms.dto.request.AllocationAdjustmentRequest;
+import com.swp.ckms.dto.response.AllocationPreviewResponse;
 import com.swp.ckms.dto.response.ProductionPlanResponse;
 import com.swp.ckms.service.AllocationService;
 import lombok.RequiredArgsConstructor;
@@ -19,7 +21,7 @@ public class AllocationController {
     public ResponseEntity<ProductionPlanResponse> confirmAllocation(
             @PathVariable Long productionPlanId,
             @RequestHeader(value = "If-Match", required = false) Long version,
-            @RequestBody(required = false) com.swp.ckms.dto.request.AllocationAdjustmentRequest adjustmentRequest) {
+            @RequestBody(required = false) AllocationAdjustmentRequest adjustmentRequest) {
         
         ProductionPlanResponse response = allocationService.confirmAllocation(productionPlanId, version, adjustmentRequest);
         return ResponseEntity.ok(response);
@@ -27,7 +29,7 @@ public class AllocationController {
 
     @GetMapping("/preview/{productionPlanId}")
     @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION')")
-    public ResponseEntity<com.swp.ckms.dto.response.AllocationPreviewResponse> previewAllocation(
+    public ResponseEntity<AllocationPreviewResponse> previewAllocation(
             @PathVariable Long productionPlanId) {
         return ResponseEntity.ok(allocationService.previewAllocation(productionPlanId));
     }

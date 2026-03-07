@@ -4,15 +4,12 @@ import com.swp.ckms.dto.request.ConfirmDeliveryRequest;
 import com.swp.ckms.dto.request.CreateShipmentRequest;
 import com.swp.ckms.dto.response.ShipmentResponse;
 import com.swp.ckms.entity.*;
-import com.swp.ckms.enums.OrderStatus;
-import com.swp.ckms.enums.ShipmentStatus;
+import com.swp.ckms.enums.*;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.repository.*;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.ShipmentService;
-import com.swp.ckms.enums.InventoryTransactionType;
-import com.swp.ckms.enums.InvoiceStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -65,7 +62,7 @@ public class ShipmentServiceImpl implements ShipmentService {
             plan = productionPlanRepository.findById(request.getProductionPlanId())
                     .orElseThrow(() -> new ResourceNotFoundException("Production Plan not found: " + request.getProductionPlanId()));
 
-            if (plan.getStatus() != com.swp.ckms.enums.ProductionPlanStatus.FINISHED) {
+            if (plan.getStatus() != ProductionPlanStatus.FINISHED) {
                 throw new IllegalStateException("Production Plan must be FINISHED before creating shipment. Current: " + plan.getStatus());
             }
         }
