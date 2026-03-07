@@ -19,4 +19,7 @@ public class StoreOrderRequest {
 
     @NotEmpty(message = "Order must contain at least one item")
     private List<OrderItemRequest> items;
+
+    @NotNull(message = "Delivery date is required")
+    private java.time.LocalDate deliveryDate;
 }

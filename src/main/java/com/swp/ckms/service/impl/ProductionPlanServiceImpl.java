@@ -58,19 +58,16 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
 
         List<Long> orderIds = java.util.Objects.requireNonNull(request.getStoreOrderIds(), "Order IDs list cannot be null");
 
-        // BR-02: Check Production Capacity
-        java.math.BigDecimal currentLoad = storeOrderRepository.sumQuantityByOrderIds(orderIds);
-        if (currentLoad == null) currentLoad = java.math.BigDecimal.ZERO;
-
+        // BR-02: Check Production Capacity (Senior Logic: Check all commitments for the date)
         if (kitchen.getMaxDailyCapacity() != null) {
-            java.math.BigDecimal existingLoad = productionPlanRepository.sumPlannedQuantityByKitchenAndDate(
+            java.math.BigDecimal globalLoad = storeOrderRepository.sumQuantityByKitchenAndDeliveryDate(
                     kitchen.getKitchenId(), request.getPlannedDate());
-            if (existingLoad == null) existingLoad = java.math.BigDecimal.ZERO;
+            if (globalLoad == null) globalLoad = java.math.BigDecimal.ZERO;
 
-            if (existingLoad.add(currentLoad).compareTo(kitchen.getMaxDailyCapacity()) > 0) {
-                throw new BusinessRuleViolationException(String.format(
-                        "Tổng tải sản xuất trong ngày %s vượt quá công suất bếp (Tối đa: %s, Hiện tại: %s, Plan mới: %s)",
-                        request.getPlannedDate(), kitchen.getMaxDailyCapacity(), existingLoad, currentLoad));
+            if (globalLoad.compareTo(kitchen.getMaxDailyCapacity()) > 0) {
+                throw new com.swp.ckms.exception.business.BusinessRuleViolationException(String.format(
+                        "Không thể tạo kế hoạch: Tổng tải cam kết ngày %s (%s) đã vượt quá công suất bếp (%s)",
+                        request.getPlannedDate(), globalLoad, kitchen.getMaxDailyCapacity()));
             }
         }
 
@@ -359,6 +356,10 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
 
         // Step 11: Cập nhật plan.setStatus(IN_PRODUCTION)
         plan.setStatus(ProductionPlanStatus.IN_PRODUCTION);
+        
+        // [Phase 2] Just-in-Time Locking: Lock associated Store Orders
+        storeOrderRepository.updateStatusByPlanId(planId, com.swp.ckms.enums.OrderStatus.LOCKED);
+
         // Step 10 & 11: Save plan (triggers version check) and let dirty checking save KitchenStockItem
         productionPlanRepository.save(plan);
 
