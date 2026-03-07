@@ -61,7 +61,7 @@ public class ProductionPlanController {
             @PathVariable Long id,
             @RequestHeader(value = "If-Match", required = false) Long version) {
         
-        ProductionPlanResponse response = allocationService.confirmAllocation(id, version);
+        ProductionPlanResponse response = allocationService.confirmAllocation(id, version, null);
         return ResponseEntity.ok(response);
     }
 
