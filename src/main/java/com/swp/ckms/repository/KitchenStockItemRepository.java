@@ -62,6 +62,12 @@ public interface KitchenStockItemRepository extends JpaRepository<KitchenStockIt
             @Param("warehouseId") Long warehouseId,
             @Param("productIds") List<Long> productIds);
 
+    @Query("SELECT k FROM KitchenStockItem k WHERE k.warehouse.warehouseId = :warehouseId AND k.product.id = :productId AND k.productionPlan.planId = :planId")
+    Optional<KitchenStockItem> findByWarehouseAndProductAndPlan(
+            @Param("warehouseId") Long warehouseId, 
+            @Param("productId") Long productId, 
+            @Param("planId") Long planId);
+
     @Query("SELECT SUM(k.quantity) FROM KitchenStockItem k WHERE k.warehouse.warehouseId = :warehouseId")
     BigDecimal getTotalQuantityByWarehouseId(@Param("warehouseId") Long warehouseId);
 }
