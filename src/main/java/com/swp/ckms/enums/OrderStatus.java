@@ -1,12 +1,13 @@
 package com.swp.ckms.enums;
 
 public enum OrderStatus {
-    SUBMITTED,
-    REJECTED,
-    GROUPED,
-    CONFIRMED,
-    PREPARING,
-    READY,
-    SHIPPING,
-    COMPLETED
+    SUBMITTED,   // Mới tạo - Chờ duyệt
+    APPROVED,    // Đã duyệt - Chờ vào kế hoạch
+    SCHEDULED,   // Đã vào kế hoạch sản xuất
+    LOCKED,      // Đang nấu - Khóa đơn hàng
+    ALLOCATED,   // Đã chia hàng & giữ kho
+    IN_TRANSIT,  // Đang trên xe giao hàng
+    DELIVERED,   // Đã giao đến Store
+    CONFIRMED,   // Đã chốt tài chính/Invoice
+    REJECTED     // Đơn bị từ chối
 }

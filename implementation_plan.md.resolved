@@ -1,0 +1,82 @@
+# 📘 DETAILED IMPLEMENTATION PLAN: COORDINATOR LEVEL 2 (9.5/10 Architecture)
+
+Kế hoạch này tích hợp các chuẩn Senior BE về tính toàn vẹn dữ liệu (Data Integrity) và vận hành thực tế.
+
+---
+
+## 🏗️ PHASE 1: Dữ liệu & Trạng thái (Hạ tầng - 1.5 ngày)
+*Mục tiêu: Xây dựng nền tảng cho Audit và Reservation.*
+
+### 1.1 Database Migration
+*   **[MODIFY] kitchen_stock_items**: Thêm cột `reserved_quantity` (BigDecimal, default = 0).
+*   **[NEW] production_outputs**: Lưu kết quả nấu thực tế từ Bếp.
+    *   `id`, `production_plan_id` (FK), `product_id`, `actual_produced_qty`.
+*   **[NEW] allocation_items**: 
+    *   Thêm `production_plan_id` (FK) để biết allocation thuộc batch nào.
+    *   Lưu vết `requested_qty` (Số lượng đặt) vs `final_qty` (Số lượng giao).
+
+### 1.2 Senior State Machine
+*   **Order States**: `SCHEDULED` (Đã vào plan), `LOCKED` (Đang nấu), `ALLOCATED` (Đã chia & giữ hàng), `IN_TRANSIT` (Trên xe), `DELIVERED` (Đến nơi), `CONFIRMED` (Chốt tài chính).
+
+---
+
+## 🔐 PHASE 2: Just-in-Time Locking & Capacity (2.5 ngày)
+*Mục tiêu: Đảm bảo không quá tải Bếp và khóa dữ liệu đúng lúc.*
+
+1.  **[Logic] Kitchen Capacity Guard**:
+    *   **Validation Rule**: `SUM(order_details.quantity) FOR Date T` <= `central_kitchen.max_daily_capacity`.
+    *   **Check 1 (Order Approval)**: Chặn khi Coordinator duyệt đơn nếu vượt quá công suất ngày đó.
+    *   **Check 2 (Production Plan)**: Chặn tuyệt đối khi tạo `ProductionPlan` nếu tổng sản lượng vượt định mức.
+2.  **[Logic] Just-in-Time Locking**:
+    *   **Trigger 1 (SCHEDULED)**: Khi Coordinator gán đơn vào `ProductionPlan`. Store vẫn có thể xin hủy (cần duyệt).
+    *   **Trigger 2 (LOCKED)**: Khi Bếp xác nhận "Bắt đầu sản xuất". Khóa cứng tuyệt đối.
+3.  **[Guard] API Security**: Chặn toàn bộ hành động sửa xóa từ Store khi ở các trạng thái này.
+
+---
+
+## ⚖️ PHASE 3: Yield Adjustment & Validation (2 ngày)
+*Mục tiêu: Bảo toàn hàng hóa từ Bếp đến Store.*
+
+1.  **[Workflow] Kitchen Reporting**: Bếp nhập kết quả nấu vào `production_outputs` trước khi Coordinator chia hàng.
+2.  **[Logic] Yield Validation**: 
+    *   Khi Coordinator bấm `Confirm Allocation`, hệ thống bắt buộc kiểm tra: 
+        `SUM(allocation_items.final_qty) == production_outputs.actual_produced_qty`.
+    *   Không khớp -> Chặn Commit. Chống thất lạc hàng.
+3.  **[Service] Reserve & Adjust**: Cập nhật `reserved_quantity` và tự động tính lại tổng tiền Invoice dựa trên số thực nhận.
+
+---
+
+## 🚚 PHASE 4: Atomic Shipment & Consolidation (2 ngày)
+*Mục tiêu: Đảm bảo "Xe rời kho là tiền vào sổ".*
+
+1.  **[Entity] Shipment Alignment**: Đảm bảo 1 `Shipment` hỗ trợ nhiều Store (Consolidated).
+2.  **[Service] Atomic startTransit**: Trừ `OnHand` và Trừ `Reserved` trong cùng 1 transaction (Pessimistic Lock).
+3.  **[Logic] Short-shipment Handle**: Nếu store nhận thiếu so với allocation (`delivered_qty < final_qty`), ghi nhận sự cố để đối soát shipper.
+
+---
+
+## 🔍 PHASE 5: Senior Audit & Edge Cases (1.5 ngày)
+*Mục tiêu: Hệ thống tự phát hiện lỗi.*
+
+1.  **[Audit] Inventory Integrity**: Check hằng đêm các bản ghi `reserved_quantity > 0` mà đơn hàng đã hoàn tất.
+2.  **[Edge Case] Admin Override**: Viết flow cho phép Coordinator mở khóa đơn `LOCKED` trong trường hợp khẩn cấp (có log vết).
+3.  **[E2E] Stress Test**: Test scenario nhiều store đặt cùng SKU và chia hàng thiếu trong điều kiện tải cao.
+
+---
+ 
+## 📧 PHASE 6: Automatic Notifications (1 ngày)
+*Mục tiêu: Cập nhật trạng thái thời gian thực cho Store.*
+
+1.  **[Service] Email Extension**: Cập nhật `EmailService` để hỗ trợ gửi thông báo trạng thái đơn hàng.
+2.  **[Logic] Event-Driven Notification**: Sử dụng `ApplicationEventPublisher` để gửi mail mỗi khi `OrderStatus` thay đổi.
+    *   Các mốc: `SCHEDULED`, `APPROVED`, `LOCKED`, `ALLOCATED`, `IN_TRANSIT`.
+3.  **[Template] Email Content**: Thiết kế template mail chuyên nghiệp: "Đơn hàng #XYZ của bạn đã được [TRẠNG THÁI MỚI]".
+
+---
+
+## ✅ DONE DEFINITION
+1.  **Zero Leakage**: `OnHand` và `Reserved` luôn khớp 100% sau mỗi chu kỳ.
+2.  **Yield Proof**: Luôn giải trình được sự chênh lệch giữa Số đặt và Số giao.
+3.  **Financial Integrity**: Không có Invoice nào sai lệch so với hàng thực tế giao nhận.
+4.  **Real-time Alert**: Mọi thay đổi trạng thái quan trọng đều được gửi mail thông báo.
+5.  **Capacity Safe**: Hệ thống ngăn chặn việc đặt hàng quá tải Bếp.

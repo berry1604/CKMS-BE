@@ -23,6 +23,7 @@ public class CentralKitchen {
 
     private String address;
 
+    @Builder.Default
     @Column(precision = 19, scale = 2)
-    private java.math.BigDecimal maxDailyCapacity;
+    private java.math.BigDecimal maxDailyCapacity = java.math.BigDecimal.valueOf(200);
 }
