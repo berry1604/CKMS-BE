@@ -8,11 +8,11 @@ import com.swp.ckms.entity.ProductionPlanMaterialRequirement;
 import com.swp.ckms.entity.User;
 import com.swp.ckms.enums.ProductionPlanStatus;
 import com.swp.ckms.exception.business.OrderAssignmentConflictException;
+import com.swp.ckms.repository.ProductionOutputRepository;
 import com.swp.ckms.repository.ProductionPlanMaterialRequirementRepository;
 import com.swp.ckms.repository.ProductionPlanRepository;
 import com.swp.ckms.repository.StoreOrderRepository;
 import com.swp.ckms.repository.UserRepository;
-import com.swp.ckms.exception.business.BusinessRuleViolationException;
 import com.swp.ckms.repository.projection.MaterialRequirementProjection;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
@@ -23,8 +23,10 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +41,7 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
     private final com.swp.ckms.repository.KitchenWarehouseRepository warehouseRepository;
     private final com.swp.ckms.repository.KitchenStockItemRepository kitchenStockItemRepository;
     private final com.swp.ckms.repository.InventoryTransactionRepository inventoryTransactionRepository;
+    private final ProductionOutputRepository productionOutputRepository;
 
     @Override
     public ProductionPlanResponse createProductionPlan(ProductionPlanRequest request) {
@@ -304,6 +307,8 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                 }
                 
                 java.math.BigDecimal itemQty = item.getQuantity();
+                java.math.BigDecimal itemReserved = item.getReservedQuantity() != null ? item.getReservedQuantity() : java.math.BigDecimal.ZERO;
+                
                 if (itemQty.compareTo(java.math.BigDecimal.ZERO) <= 0) continue;
                 
                 java.math.BigDecimal deductedQty;
@@ -312,10 +317,18 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                     deductedQty = itemQty;
                     requiredQty = requiredQty.subtract(itemQty);
                     item.setQuantity(java.math.BigDecimal.ZERO);
+                    // Also clear reservation if any
+                    item.setReservedQuantity(java.math.BigDecimal.ZERO); 
                 } else {
                     // Partially use this item
                     deductedQty = requiredQty;
                     item.setQuantity(itemQty.subtract(requiredQty));
+                    // Reduce reserved if it was reserved
+                    if (itemReserved.compareTo(deductedQty) >= 0) {
+                        item.setReservedQuantity(itemReserved.subtract(deductedQty));
+                    } else {
+                        item.setReservedQuantity(java.math.BigDecimal.ZERO);
+                    }
                     requiredQty = java.math.BigDecimal.ZERO;
                 }
 
@@ -335,8 +348,6 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
             if (requiredQty.compareTo(java.math.BigDecimal.ZERO) > 0) {
                  java.math.BigDecimal availableQtyForMatId = availableItemsForMatId.stream()
                         .map(com.swp.ckms.entity.KitchenStockItem::getQuantity)
-                        // Should technically sum up original qty before our deductions, 
-                        // but req.getRequiredQuantity() - requiredQty is what we managed to deduct.
                         .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add)
                         .add(req.getRequiredQuantity().subtract(requiredQty)); 
 
@@ -364,19 +375,12 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         productionPlanRepository.save(plan);
 
         // Step 12: Return response
-        return ProductionPlanResponse.builder()
-                .planId(plan.getPlanId())
-                .planName(plan.getPlanName())
-                .batchCode(plan.getBatchCode())
-                .kitchenId(plan.getKitchen().getKitchenId())
-                .status(plan.getStatus().name())
-                .createdAt(plan.getCreatedAt())
-                .coordinatorUserId(plan.getCoordinatorUser().getUserId())
-                .build();
+        return buildProductionPlanResponse(plan);
     }
 
     @Override
-    public ProductionPlanResponse finishProductionPlan(Long planId, Long requestVersion) {
+    @Transactional
+    public ProductionPlanResponse reportProductionYield(Long planId, com.swp.ckms.dto.request.FinishProductionPlanRequest request) {
         // Step 1: Security & Identity validation
         UserContext ctx = SecurityUtils.getCurrentUserContext();
         if (ctx == null) {
@@ -388,29 +392,21 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         boolean isSystemScope = "SYSTEM".equalsIgnoreCase(ctx.getScope());
         ProductionPlan plan;
 
-        // Step 2: Fetch ProductionPlan with Kitchen Check
+        // Step 2: Fetch ProductionPlan
         if (!isSystemScope) {
             if (currentUser.getKitchen() == null) {
                 throw new AccessDeniedException("You do not have permission to modify this Production Plan.");
             }
             plan = productionPlanRepository.findByPlanIdAndKitchen_KitchenId(planId, currentUser.getKitchen().getKitchenId())
-                    .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found or you don't have access. ID: " + planId));
+                    .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found or access denied. ID: " + planId));
         } else {
-             plan = productionPlanRepository.findById(planId)
+            plan = productionPlanRepository.findById(planId)
                     .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("Production Plan not found with id: " + planId));
         }
 
-        // Step 3: Idempotency Check (CHECK FIRST)
-        if (plan.getStatus() == ProductionPlanStatus.FINISHED) {
-             return ProductionPlanResponse.builder()
-                .planId(plan.getPlanId())
-                .planName(plan.getPlanName())
-                .batchCode(plan.getBatchCode())
-                .kitchenId(plan.getKitchen().getKitchenId())
-                .status(plan.getStatus().name())
-                .createdAt(plan.getCreatedAt())
-                .coordinatorUserId(plan.getCoordinatorUser().getUserId())
-                .build();
+        // Step 3: Idempotency Check
+        if (plan.getStatus() == ProductionPlanStatus.PRODUCED || plan.getStatus() == ProductionPlanStatus.FINISHED) {
+            return buildProductionPlanResponse(plan);
         }
 
         // Step 4: State Guard
@@ -418,93 +414,70 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
             throw new OrderAssignmentConflictException("Production Plan is not in IN_PRODUCTION state. Current state: " + plan.getStatus());
         }
 
-        // Step 5: Transition Plan (Let Hibernate handle @Version)
-        if (requestVersion != null) {
-            // OPTIONAL: even though Hibernate checks on flush, setting it here helps fail-fast if necessary, 
-            // but we'll stick to the "no manual override" rule if requestVersion is just a hint.
-            // Actually, if we don't set it, we rely on the object in session's version.
-            // If the user wants to enforce "Finish ONLY if you saw version X", we should set it.
-            plan.setVersion(requestVersion);
+        // Step 5: Version Check (Optimistic Locking)
+        if (request.getRequestVersion() != null) {
+            plan.setVersion(request.getRequestVersion());
         }
-        
-        plan.setStatus(ProductionPlanStatus.FINISHED);
-        
-        // Kitchen Warehouse Capacity Check
+
+        // Step 6: Identify Default Warehouse
         com.swp.ckms.entity.KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
-                .stream()
-                .findFirst()
-                .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("No default warehouse found for production feedback loop. Kitchen ID: " + plan.getKitchen().getKitchenId()));
+                .stream().findFirst()
+                .orElseThrow(() -> new com.swp.ckms.exception.business.ResourceNotFoundException("No default warehouse found for kitchen: " + plan.getKitchen().getKitchenId()));
 
-        if (warehouse.getMaxCapacity() != null) {
-            java.math.BigDecimal currentWarehouseQty = kitchenStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
-            if (currentWarehouseQty == null) currentWarehouseQty = java.math.BigDecimal.ZERO;
-
-            java.math.BigDecimal newProducedQty = storeOrderRepository.sumQuantityByOrderIds(
-                    storeOrderRepository.findByProductionPlan_PlanId(planId).stream()
-                            .map(com.swp.ckms.entity.StoreOrder::getOrderId)
-                            .collect(java.util.stream.Collectors.toList())
-            );
-            if (newProducedQty == null) newProducedQty = java.math.BigDecimal.ZERO;
-
-            if (currentWarehouseQty.add(newProducedQty).compareTo(warehouse.getMaxCapacity()) > 0) {
-                throw new BusinessRuleViolationException(String.format(
-                        "Việc nhập thành phẩm sẽ làm tràn kho bếp. (Công suất kho tối đa: %s, Hiện tại: %s, Nhập mới: %s)",
-                        warehouse.getMaxCapacity(), currentWarehouseQty, newProducedQty));
-            }
+        // Step 7: Record Production Output (Yield Reporting)
+        if (request.getOutputs() == null || request.getOutputs().isEmpty()) {
+            throw new IllegalArgumentException("Production outputs must be provided to finish the plan.");
         }
 
+        for (com.swp.ckms.dto.request.ProductionOutputRequest outputReq : request.getOutputs()) {
+            com.swp.ckms.entity.Product product = com.swp.ckms.entity.Product.builder().id(outputReq.getProductId()).build();
+            
+            // Record to ProductionOutput entity
+            productionOutputRepository.save(com.swp.ckms.entity.ProductionOutput.builder()
+                    .productionPlan(plan)
+                    .product(product)
+                    .actualProducedQty(outputReq.getActualQty())
+                    .build());
+
+            // Feedback Loop: Add produced items to Kitchen Stock
+            com.swp.ckms.entity.KitchenStockItem stockItem = kitchenStockItemRepository
+                    .findByWarehouse_WarehouseIdAndProduct_Id(warehouse.getWarehouseId(), product.getId())
+                    .stream().findFirst()
+                    .orElseGet(() -> com.swp.ckms.entity.KitchenStockItem.builder()
+                            .warehouse(warehouse)
+                            .product(product)
+                            .quantity(BigDecimal.ZERO)
+                            .reservedQuantity(BigDecimal.ZERO)
+                            .build());
+
+            stockItem.setQuantity(stockItem.getQuantity().add(outputReq.getActualQty()));
+            stockItem.setProductionPlan(plan);
+            if (plan.getPlannedDate() != null) {
+                stockItem.setExpiryDate(plan.getPlannedDate().plusDays(3));
+            }
+            kitchenStockItemRepository.save(stockItem);
+
+            // Audit
+            inventoryTransactionRepository.save(com.swp.ckms.entity.InventoryTransaction.builder()
+                    .kitchenWarehouse(warehouse)
+                    .type(com.swp.ckms.enums.InventoryTransactionType.PRODUCTION_ADD)
+                    .product(product)
+                    .quantity(outputReq.getActualQty())
+                    .refId(planId)
+                    .expiryDate(stockItem.getExpiryDate())
+                    .createdAt(java.time.LocalDateTime.now())
+                    .build());
+        }
+
+        // Step 8: Update Plan Status to PRODUCED (Awaiting Allocation)
+        plan.setStatus(ProductionPlanStatus.PRODUCED);
         productionPlanRepository.save(plan);
 
-        // Step 6: Bulk Update Store Orders (Only GROUPED -> READY)
-        storeOrderRepository.updateOrderStatusToReadyByPlanId(planId);
+        return buildProductionPlanResponse(plan);
+    }
 
-        // Step 7: Feedback Loop - Add produced items to Kitchen Stock
-        // Find default warehouse for the plan's kitchen
-        // Already fetched above for capacity check
-        
-        // Aggregate products from all orders in this plan
-        List<com.swp.ckms.entity.StoreOrder> orders = storeOrderRepository.findByProductionPlan_PlanId(planId);
-        
-        for (com.swp.ckms.entity.StoreOrder order : orders) {
-            for (com.swp.ckms.entity.OrderDetail detail : order.getOrderDetails()) {
-                com.swp.ckms.entity.Product product = detail.getProduct();
-                java.math.BigDecimal producedQty = java.math.BigDecimal.valueOf(detail.getQuantity());
 
-                // Find or create stock item (for finished product, batchCode might be plan's batchCode)
-                com.swp.ckms.entity.KitchenStockItem stockItem = kitchenStockItemRepository
-                        .findByWarehouse_WarehouseIdAndProduct_Id(warehouse.getWarehouseId(), product.getId())
-                        .stream().findFirst()
-                        .orElseGet(() -> com.swp.ckms.entity.KitchenStockItem.builder()
-                                .warehouse(warehouse)
-                                .product(product)
-                                .quantity(java.math.BigDecimal.ZERO)
-                                .build());
-
-                stockItem.setQuantity(stockItem.getQuantity().add(producedQty));
-                stockItem.setProductionPlan(plan); // Tag with the plan that produced it
-                
-                // BR-05: Set default expiry date for produced items (e.g., 3 days from production date)
-                if (plan.getPlannedDate() != null) {
-                    stockItem.setExpiryDate(plan.getPlannedDate().plusDays(3));
-                }
-                
-                kitchenStockItemRepository.save(stockItem);
-
-                // Audit: Record Transaction
-                com.swp.ckms.entity.InventoryTransaction tx = com.swp.ckms.entity.InventoryTransaction.builder()
-                        .kitchenWarehouse(warehouse)
-                        .type(com.swp.ckms.enums.InventoryTransactionType.PRODUCTION_ADD)
-                        .product(product) // Set product field
-                        .quantity(producedQty)
-                        .refId(planId)
-                        .expiryDate(stockItem.getExpiryDate())
-                        .note("Thêm thành phẩm từ kế hoạch sản xuất: " + plan.getBatchCode())
-                        .build();
-                inventoryTransactionRepository.save(tx);
-            }
-        }
-
-        // Step 8: Return response
+    private ProductionPlanResponse buildProductionPlanResponse(ProductionPlan plan) {
         return ProductionPlanResponse.builder()
                 .planId(plan.getPlanId())
                 .planName(plan.getPlanName())
