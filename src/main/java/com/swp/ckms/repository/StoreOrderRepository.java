@@ -56,4 +56,30 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
 
     @Query("SELECT SUM(od.quantity) FROM StoreOrder o JOIN o.orderDetails od WHERE o.orderId IN :orderIds")
     java.math.BigDecimal sumQuantityByOrderIds(@Param("orderIds") List<Long> orderIds);
+
+    @Modifying
+    @Query("UPDATE StoreOrder o SET o.status = :status WHERE o.productionPlan.planId = :planId")
+    int updateStatusByPlanId(@Param("planId") Long planId, @Param("status") OrderStatus status);
+
+    @Query("""
+        SELECT SUM(od.quantity) 
+        FROM StoreOrder o 
+        JOIN o.orderDetails od 
+        LEFT JOIN o.approvedByUser u
+        LEFT JOIN o.productionPlan p
+        WHERE (u.kitchen.kitchenId = :kitchenId OR p.kitchen.kitchenId = :kitchenId)
+        AND o.deliveryDate = :deliveryDate 
+        AND o.status IN (
+            com.swp.ckms.enums.OrderStatus.APPROVED,
+            com.swp.ckms.enums.OrderStatus.SCHEDULED,
+            com.swp.ckms.enums.OrderStatus.LOCKED,
+            com.swp.ckms.enums.OrderStatus.ALLOCATED,
+            com.swp.ckms.enums.OrderStatus.IN_TRANSIT,
+            com.swp.ckms.enums.OrderStatus.DELIVERED,
+            com.swp.ckms.enums.OrderStatus.CONFIRMED
+        )
+    """)
+    java.math.BigDecimal sumQuantityByKitchenAndDeliveryDate(
+            @Param("kitchenId") Long kitchenId, 
+            @Param("deliveryDate") java.time.LocalDate deliveryDate);
 }

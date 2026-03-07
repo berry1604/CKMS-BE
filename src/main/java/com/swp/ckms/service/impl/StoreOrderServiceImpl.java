@@ -4,6 +4,7 @@ import com.swp.ckms.dto.request.OrderItemRequest;
 import com.swp.ckms.dto.request.StoreOrderRequest;
 import com.swp.ckms.dto.response.OrderDetailResponse;
 import com.swp.ckms.dto.response.StoreOrderResponse;
+import com.swp.ckms.entity.CentralKitchen;
 import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.OrderDetail;
 import com.swp.ckms.entity.Product;
@@ -26,6 +27,7 @@ import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.StoreOrderService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +43,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional
 public class StoreOrderServiceImpl implements StoreOrderService {
 
@@ -68,6 +71,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .store(store)
                 .createdByUser(user)
                 .orderDate(LocalDateTime.now())
+                .deliveryDate(request.getDeliveryDate())
                 .status(OrderStatus.SUBMITTED)
                 .batchId(null)
                 .build();
@@ -292,6 +296,25 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
             User approvedBy = userRepository.findById(ctx.getUserId())
                     .orElseThrow(() -> new ResourceNotFoundException("Approver not found"));
+
+            // [Phase 2] Kitchen Capacity Guard (Refined: Coordinator-based)
+            CentralKitchen kitchen = approvedBy.getKitchen();
+            if (kitchen != null && kitchen.getMaxDailyCapacity() != null) {
+                java.math.BigDecimal existingLoad = storeOrderRepository.sumQuantityByKitchenAndDeliveryDate(
+                        kitchen.getKitchenId(), order.getDeliveryDate());
+                if (existingLoad == null) existingLoad = java.math.BigDecimal.ZERO;
+
+                java.math.BigDecimal newOrderLoad = java.math.BigDecimal.valueOf(
+                        order.getOrderDetails().stream().mapToDouble(d -> d.getQuantity()).sum());
+
+                if (existingLoad.add(newOrderLoad).compareTo(kitchen.getMaxDailyCapacity()) > 0) {
+                    throw new com.swp.ckms.exception.business.BusinessRuleViolationException(String.format(
+                            "Duyệt đơn thất bại: Tổng tải sản xuất ngày %s vượt quá công suất bếp %s (Hệ thống đã nhận: %s, Đơn này: %s)",
+                            order.getDeliveryDate(), kitchen.getMaxDailyCapacity(), existingLoad, newOrderLoad));
+                }
+            } else {
+                log.info("Skipping capacity guard Check: Kitchen or maxDailyCapacity is not set for coordinator: {}", approvedBy.getUsername());
+            }
 
             order.setStatus(OrderStatus.APPROVED); // Duyệt đơn là đưa vào hàng chờ Scheduled
             order.setApprovedByUser(approvedBy);
