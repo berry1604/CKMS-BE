@@ -18,9 +18,17 @@ public class AllocationController {
     @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION')")
     public ResponseEntity<ProductionPlanResponse> confirmAllocation(
             @PathVariable Long productionPlanId,
-            @RequestHeader(value = "If-Match", required = false) Long version) {
+            @RequestHeader(value = "If-Match", required = false) Long version,
+            @RequestBody(required = false) com.swp.ckms.dto.request.AllocationAdjustmentRequest adjustmentRequest) {
         
-        ProductionPlanResponse response = allocationService.confirmAllocation(productionPlanId, version);
+        ProductionPlanResponse response = allocationService.confirmAllocation(productionPlanId, version, adjustmentRequest);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/preview/{productionPlanId}")
+    @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION')")
+    public ResponseEntity<com.swp.ckms.dto.response.AllocationPreviewResponse> previewAllocation(
+            @PathVariable Long productionPlanId) {
+        return ResponseEntity.ok(allocationService.previewAllocation(productionPlanId));
     }
 }
