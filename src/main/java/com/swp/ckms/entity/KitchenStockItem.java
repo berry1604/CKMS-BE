@@ -36,6 +36,10 @@ public class KitchenStockItem {
     @Column(nullable = false)
     private BigDecimal quantity;
 
+    @Builder.Default
+    @Column(nullable = false, precision = 19, scale = 2)
+    private BigDecimal reservedQuantity = BigDecimal.ZERO;
+
     private LocalDate expiryDate;
 
     @ManyToOne(fetch = FetchType.LAZY)

@@ -49,6 +49,8 @@ public class StoreOrder {
 
     private LocalDateTime orderDate;
 
+    private java.time.LocalDate deliveryDate;
+
     private BigDecimal orderFee;
 
     private BigDecimal totalAmount;

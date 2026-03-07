@@ -1,15 +1,21 @@
 package com.swp.ckms.controller;
 
+import com.swp.ckms.dto.request.FinishProductionPlanRequest;
 import com.swp.ckms.dto.request.ProductionPlanRequest;
+import com.swp.ckms.dto.response.ProductionPlanDetailResponse;
 import com.swp.ckms.dto.response.ProductionPlanResponse;
+import com.swp.ckms.dto.response.ProductionPlanSummaryResponse;
+import com.swp.ckms.enums.ProductionPlanStatus;
+import com.swp.ckms.service.AllocationService;
 import com.swp.ckms.service.ProductionPlanService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/production-plans")
@@ -17,6 +23,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 public class ProductionPlanController {
 
     private final ProductionPlanService productionPlanService;
+    private final AllocationService allocationService;
 
     @PostMapping
     @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION') or hasAuthority('CREATE_PRODUCTION_PLAN')")
@@ -43,12 +50,23 @@ public class ProductionPlanController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/{id}/finish")
+    @PostMapping("/{id}/yield")
     @PreAuthorize("hasAuthority('EXECUTE_PRODUCTION')")
-    public ResponseEntity<ProductionPlanResponse> finishProductionPlan(
+    public ResponseEntity<ProductionPlanResponse> reportProductionYield(
+            @PathVariable Long id,
+            @Valid @RequestBody FinishProductionPlanRequest request) {
+        
+        ProductionPlanResponse response = productionPlanService.reportProductionYield(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/allocate")
+    @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION')")
+    public ResponseEntity<ProductionPlanResponse> confirmAllocation(
             @PathVariable Long id,
             @RequestHeader(value = "If-Match", required = false) Long version) {
-        ProductionPlanResponse response = productionPlanService.finishProductionPlan(id, version);
+        
+        ProductionPlanResponse response = allocationService.confirmAllocation(id, version, null);
         return ResponseEntity.ok(response);
     }
 
@@ -64,15 +82,15 @@ public class ProductionPlanController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('VIEW_PRODUCTION_PLAN')")
-    public ResponseEntity<org.springframework.data.domain.Page<com.swp.ckms.dto.response.ProductionPlanSummaryResponse>> getAllProductionPlans(
-            @RequestParam(required = false) com.swp.ckms.enums.ProductionPlanStatus status,
-            org.springframework.data.domain.Pageable pageable) {
+    public ResponseEntity<Page<ProductionPlanSummaryResponse>> getAllProductionPlans(
+            @RequestParam(required = false) ProductionPlanStatus status,
+            Pageable pageable) {
         return ResponseEntity.ok(productionPlanService.getAllProductionPlans(status, pageable));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('VIEW_PRODUCTION_PLAN')")
-    public ResponseEntity<com.swp.ckms.dto.response.ProductionPlanDetailResponse> getProductionPlanDetail(@PathVariable Long id) {
+    public ResponseEntity<ProductionPlanDetailResponse> getProductionPlanDetail(@PathVariable Long id) {
         return ResponseEntity.ok(productionPlanService.getProductionPlanDetail(id));
     }
 }

@@ -27,7 +27,7 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     List<StoreOrder> findByProductionPlan_PlanId(Long planId);
 
     @Modifying
-    @Query("UPDATE StoreOrder o SET o.productionPlan.planId = :planId, o.status = com.swp.ckms.enums.OrderStatus.GROUPED WHERE o.orderId IN :orderIds AND o.productionPlan IS NULL AND o.status = com.swp.ckms.enums.OrderStatus.CONFIRMED")
+    @Query("UPDATE StoreOrder o SET o.productionPlan.planId = :planId, o.status = com.swp.ckms.enums.OrderStatus.SCHEDULED WHERE o.orderId IN :orderIds AND o.productionPlan IS NULL AND o.status = com.swp.ckms.enums.OrderStatus.APPROVED")
     int assignOrdersToPlan(@Param("planId") Long planId, @Param("orderIds") List<Long> orderIds);
 
     @Query("""
@@ -45,15 +45,41 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     List<MaterialRequirementProjection> getMaterialRequirementsForPlan(@Param("planId") Long planId);
 
     @Modifying
-    @Query("UPDATE StoreOrder o SET o.status = com.swp.ckms.enums.OrderStatus.READY WHERE o.productionPlan.planId = :planId AND o.status = com.swp.ckms.enums.OrderStatus.GROUPED")
+    @Query("UPDATE StoreOrder o SET o.status = com.swp.ckms.enums.OrderStatus.ALLOCATED WHERE o.productionPlan.planId = :planId AND o.status = com.swp.ckms.enums.OrderStatus.SCHEDULED")
     int updateOrderStatusToReadyByPlanId(@Param("planId") Long planId);
 
     @Modifying
-    @Query("UPDATE StoreOrder o SET o.productionPlan = NULL, o.status = com.swp.ckms.enums.OrderStatus.CONFIRMED WHERE o.productionPlan.planId = :planId")
+    @Query("UPDATE StoreOrder o SET o.productionPlan = NULL, o.status = com.swp.ckms.enums.OrderStatus.APPROVED WHERE o.productionPlan.planId = :planId")
     int releaseOrdersFromPlan(@Param("planId") Long planId);
 
     List<StoreOrder> findByShipment_ShipmentId(Long shipmentId);
 
     @Query("SELECT SUM(od.quantity) FROM StoreOrder o JOIN o.orderDetails od WHERE o.orderId IN :orderIds")
     java.math.BigDecimal sumQuantityByOrderIds(@Param("orderIds") List<Long> orderIds);
+
+    @Modifying
+    @Query("UPDATE StoreOrder o SET o.status = :status WHERE o.productionPlan.planId = :planId")
+    int updateStatusByPlanId(@Param("planId") Long planId, @Param("status") OrderStatus status);
+
+    @Query("""
+        SELECT SUM(od.quantity) 
+        FROM StoreOrder o 
+        JOIN o.orderDetails od 
+        LEFT JOIN o.approvedByUser u
+        LEFT JOIN o.productionPlan p
+        WHERE (u.kitchen.kitchenId = :kitchenId OR p.kitchen.kitchenId = :kitchenId)
+        AND o.deliveryDate = :deliveryDate 
+        AND o.status IN (
+            com.swp.ckms.enums.OrderStatus.APPROVED,
+            com.swp.ckms.enums.OrderStatus.SCHEDULED,
+            com.swp.ckms.enums.OrderStatus.LOCKED,
+            com.swp.ckms.enums.OrderStatus.ALLOCATED,
+            com.swp.ckms.enums.OrderStatus.IN_TRANSIT,
+            com.swp.ckms.enums.OrderStatus.DELIVERED,
+            com.swp.ckms.enums.OrderStatus.CONFIRMED
+        )
+    """)
+    java.math.BigDecimal sumQuantityByKitchenAndDeliveryDate(
+            @Param("kitchenId") Long kitchenId, 
+            @Param("deliveryDate") java.time.LocalDate deliveryDate);
 }
