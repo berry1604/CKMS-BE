@@ -22,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/billing-statements")
@@ -124,5 +125,29 @@ public class BillingStatementController {
                         .message("Billing statement deleted and invoices released successfully")
                         .timestamp(java.time.LocalDateTime.now())
                         .build());
+    }
+
+    @GetMapping("/vnpay-return")
+    public ResponseEntity<String> handleVnPayReturn(
+            @RequestParam Map<String, String> params
+    ) {
+        billingStatementService.handleVnPayReturn(params);
+        return ResponseEntity.ok("Payment processed successfully");
+    }
+
+    @PostMapping("/{id}/vnpay")
+    @PreAuthorize("hasAuthority('CONFIRM_PAYMENT')")
+    public ResponseEntity<ApiResponse<String>> createVnPayPayment(@PathVariable Long id) {
+
+        String paymentUrl = billingStatementService.createVnPayUrl(id);
+
+        return ResponseEntity.ok(
+                ApiResponse.<String>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("VNPay payment URL generated successfully")
+                        .data(paymentUrl)
+                        .timestamp(java.time.LocalDateTime.now())
+                        .build()
+        );
     }
 }

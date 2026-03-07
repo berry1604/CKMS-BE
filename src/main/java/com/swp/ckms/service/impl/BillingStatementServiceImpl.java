@@ -19,6 +19,7 @@ import com.swp.ckms.exception.business.DuplicateResourceException;
 import com.swp.ckms.exception.business.ForbiddenException;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.exception.validation.InvalidRequestException;
+import com.swp.ckms.integration.payment.PaymentGateway;
 import com.swp.ckms.repository.BillingStatementRepository;
 import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.InvoiceRepository;
@@ -34,11 +35,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -50,6 +53,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     private final FranchiseStoreRepository franchiseStoreRepository;
     private final PaymentMethodRepository paymentMethodRepository;
     private final com.swp.ckms.repository.ShipmentRepository shipmentRepository;
+    private final PaymentGateway paymentGateway;
 
     @Override
     @Transactional
@@ -339,5 +343,75 @@ public class BillingStatementServiceImpl implements BillingStatementService {
 
         billingStatementRepository.delete(statement);
         log.info("Deleted Billing Statement #{} and released {} invoices", id, invoices.size());
+    }
+
+    @Transactional(readOnly = true)
+    public String createVnPayUrl(Long statementId) {
+
+        BillingStatement statement = billingStatementRepository.findById(statementId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Billing statement not found with id: " + statementId)
+                );
+
+        if (statement.getStatus() != BillingStatementStatus.ISSUED &&
+                statement.getStatus() != BillingStatementStatus.OVERDUE) {
+            throw new InvalidRequestException("Only ISSUED or OVERDUE statements can be paid");
+        }
+
+        return paymentGateway.createPaymentUrl(
+                statement.getStatementId(),
+                statement.getTotalAmount()
+        );
+    }
+    @Override
+    @Transactional
+    public void handleVnPayReturn(Map<String, String> params) {
+
+        if (!paymentGateway.verifySignature(params)) {
+            throw new InvalidRequestException("Invalid VNPay signature");
+        }
+
+        String txnRef = params.get("vnp_TxnRef");
+        if (txnRef == null) {
+            throw new InvalidRequestException("Missing transaction reference");
+        }
+
+        Long statementId = Long.parseLong(txnRef);
+
+        BillingStatement statement = billingStatementRepository.findForUpdate(statementId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Billing statement not found with id: " + statementId)
+                );
+
+        if (statement.getStatus() == BillingStatementStatus.PAID) {
+            return;
+        }
+
+        if (statement.getStatus() != BillingStatementStatus.ISSUED &&
+                statement.getStatus() != BillingStatementStatus.OVERDUE) {
+            throw new InvalidRequestException("Invalid billing statement state for payment");
+        }
+
+        if (!paymentGateway.isPaymentSuccessful(params)) {
+            log.warn("VNPay payment failed for statement {}", statementId);
+            return;
+        }
+
+        BigDecimal paidAmount = new BigDecimal(params.get("vnp_Amount"))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+        if (paidAmount.compareTo(statement.getTotalAmount()) != 0) {
+            throw new InvalidRequestException("Payment amount mismatch");
+        }
+
+        statement.setStatus(BillingStatementStatus.PAID);
+        statement.setPaidAt(LocalDateTime.now());
+        statement.setTransactionReference(
+                paymentGateway.getTransactionReference(params)
+        );
+
+        invoiceRepository.bulkMarkAsPaid(statement.getStatementId(), InvoiceStatus.PAID);
+
+        log.info("VNPay payment success for statement {}", statementId);
     }
 }
