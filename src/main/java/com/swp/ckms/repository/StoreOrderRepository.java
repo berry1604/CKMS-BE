@@ -27,7 +27,7 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     List<StoreOrder> findByProductionPlan_PlanId(Long planId);
 
     @Modifying
-    @Query("UPDATE StoreOrder o SET o.productionPlan.planId = :planId, o.status = com.swp.ckms.enums.OrderStatus.GROUPED WHERE o.orderId IN :orderIds AND o.productionPlan IS NULL AND o.status = com.swp.ckms.enums.OrderStatus.CONFIRMED")
+    @Query("UPDATE StoreOrder o SET o.productionPlan.planId = :planId, o.status = com.swp.ckms.enums.OrderStatus.SCHEDULED WHERE o.orderId IN :orderIds AND o.productionPlan IS NULL AND o.status = com.swp.ckms.enums.OrderStatus.APPROVED")
     int assignOrdersToPlan(@Param("planId") Long planId, @Param("orderIds") List<Long> orderIds);
 
     @Query("""
@@ -45,11 +45,11 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     List<MaterialRequirementProjection> getMaterialRequirementsForPlan(@Param("planId") Long planId);
 
     @Modifying
-    @Query("UPDATE StoreOrder o SET o.status = com.swp.ckms.enums.OrderStatus.READY WHERE o.productionPlan.planId = :planId AND o.status = com.swp.ckms.enums.OrderStatus.GROUPED")
+    @Query("UPDATE StoreOrder o SET o.status = com.swp.ckms.enums.OrderStatus.ALLOCATED WHERE o.productionPlan.planId = :planId AND o.status = com.swp.ckms.enums.OrderStatus.SCHEDULED")
     int updateOrderStatusToReadyByPlanId(@Param("planId") Long planId);
 
     @Modifying
-    @Query("UPDATE StoreOrder o SET o.productionPlan = NULL, o.status = com.swp.ckms.enums.OrderStatus.CONFIRMED WHERE o.productionPlan.planId = :planId")
+    @Query("UPDATE StoreOrder o SET o.productionPlan = NULL, o.status = com.swp.ckms.enums.OrderStatus.APPROVED WHERE o.productionPlan.planId = :planId")
     int releaseOrdersFromPlan(@Param("planId") Long planId);
 
     List<StoreOrder> findByShipment_ShipmentId(Long shipmentId);

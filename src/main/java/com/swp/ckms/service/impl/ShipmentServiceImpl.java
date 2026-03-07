@@ -84,8 +84,8 @@ public class ShipmentServiceImpl implements ShipmentService {
             if (!order.getStore().getStoreId().equals(store.getStoreId())) {
                 throw new IllegalArgumentException("Order #" + order.getOrderId() + " does not belong to store #" + store.getStoreId());
             }
-            if (order.getStatus() != OrderStatus.READY) {
-                throw new IllegalStateException("Order #" + order.getOrderId() + " is not in READY status. Current: " + order.getStatus());
+            if (order.getStatus() != OrderStatus.ALLOCATED) {
+                throw new IllegalStateException("Order #" + order.getOrderId() + " is not in ALLOCATED status. Current: " + order.getStatus());
             }
             if (order.getShipment() != null) {
                 throw new IllegalStateException("Order #" + order.getOrderId() + " is already assigned to shipment #" + order.getShipment().getShipmentId());
@@ -110,7 +110,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         // Assign orders to shipment
         for (StoreOrder order : orders) {
             order.setShipment(savedShipment);
-            order.setStatus(OrderStatus.SHIPPING);
+            order.setStatus(OrderStatus.IN_TRANSIT);
         }
         storeOrderRepository.saveAll(orders);
 
@@ -211,7 +211,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         // Update all store orders to COMPLETED
         List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipmentId);
         for (StoreOrder order : orders) {
-            order.setStatus(OrderStatus.COMPLETED);
+            order.setStatus(OrderStatus.CONFIRMED);
         }
         storeOrderRepository.saveAll(orders);
 
@@ -236,7 +236,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipmentId);
         for (StoreOrder order : orders) {
             order.setShipment(null);
-            order.setStatus(OrderStatus.READY);
+            order.setStatus(OrderStatus.ALLOCATED);
         }
         storeOrderRepository.saveAll(orders);
 
