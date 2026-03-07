@@ -7,7 +7,7 @@ public interface ProductionPlanService {
     ProductionPlanResponse createProductionPlan(ProductionPlanRequest request);
     ProductionPlanResponse checkAndReadyPlan(Long planId);
     ProductionPlanResponse startProductionPlan(Long planId, Long requestVersion);
-    ProductionPlanResponse finishProductionPlan(Long planId, Long requestVersion);
+    ProductionPlanResponse reportProductionYield(Long planId, com.swp.ckms.dto.request.FinishProductionPlanRequest request);
     ProductionPlanResponse cancelProductionPlan(Long planId, Long requestVersion, boolean returnInventory);
 
     org.springframework.data.domain.Page<com.swp.ckms.dto.response.ProductionPlanSummaryResponse> getAllProductionPlans(
