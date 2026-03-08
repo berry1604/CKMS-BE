@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 @Data
 @Component
 @ConfigurationProperties(prefix = "ahamove.api")
-public class AhaMoveProperties {
+public class AhamoveProperties {
     private String baseUrl;
     private String key;
     private String phone;
