@@ -19,6 +19,11 @@ public class ShipmentResponse {
     private String storeName;
     private Long productionPlanId;
     private String status;
+
+    private String ahamoveOrderId;
+    private String trackingLink;
+    private String ahamoveStatus;
+
     private String driverName;
     private String driverPhone;
     private String vehicleInfo;

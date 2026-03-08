@@ -22,12 +22,14 @@ public class Shipment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long shipmentId;
-// Tích hợp ahamove thì thêm vào
-    // @Column(name = "ahamove_order_id")
-    // private String ahamoveOrderId;
+    @Column(name = "ahamove_order_id")
+    private String ahamoveOrderId;
 
-    // @Column(name = "tracking_link")
-    // private String trackingLink;
+    @Column(name = "tracking_link")
+    private String trackingLink;
+
+    @Column(name = "ahamove_status")
+    private String ahamoveStatus;
 
     // Shipment giao cho cửa hàng nào
     @ManyToOne(fetch = FetchType.LAZY)
