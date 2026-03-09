@@ -4,12 +4,15 @@ import com.swp.ckms.dto.request.ConfirmDeliveryRequest;
 import com.swp.ckms.dto.request.CreateShipmentRequest;
 import com.swp.ckms.dto.response.ShipmentResponse;
 import com.swp.ckms.entity.*;
-import com.swp.ckms.enums.*;
+import com.swp.ckms.enums.OrderStatus;
+import com.swp.ckms.enums.ShipmentStatus;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.repository.*;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.ShipmentService;
+import com.swp.ckms.enums.InventoryTransactionType;
+import com.swp.ckms.enums.InvoiceStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -18,7 +21,6 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -41,13 +43,8 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final KitchenWarehouseRepository kitchenWarehouseRepository;
     private final StoreWarehouseRepository storeWarehouseRepository;
     private final InvoiceRepository invoiceRepository;
-    private final AllocationItemRepository allocationItemRepository;
+    private final AhamoveShipmentService ahamoveShipmentService; // Inject AhamoveShipmentService để gọi khi cần thiết
 
-//-----------------------------------------------------------
-
-    // TÍCH HỢP THÊM AHAMOVE THÌ SẼ THÊM VÀO CHỖ NÀY
-
-//-----------------------------------------------------------
     @Override
     public ShipmentResponse createShipment(CreateShipmentRequest request) {
         UserContext ctx = SecurityUtils.getCurrentUserContext();
@@ -62,7 +59,7 @@ public class ShipmentServiceImpl implements ShipmentService {
             plan = productionPlanRepository.findById(request.getProductionPlanId())
                     .orElseThrow(() -> new ResourceNotFoundException("Production Plan not found: " + request.getProductionPlanId()));
 
-            if (plan.getStatus() != ProductionPlanStatus.FINISHED) {
+            if (plan.getStatus() != com.swp.ckms.enums.ProductionPlanStatus.FINISHED) {
                 throw new IllegalStateException("Production Plan must be FINISHED before creating shipment. Current: " + plan.getStatus());
             }
         }
@@ -83,8 +80,8 @@ public class ShipmentServiceImpl implements ShipmentService {
             if (!order.getStore().getStoreId().equals(store.getStoreId())) {
                 throw new IllegalArgumentException("Order #" + order.getOrderId() + " does not belong to store #" + store.getStoreId());
             }
-            if (order.getStatus() != OrderStatus.ALLOCATED) {
-                throw new IllegalStateException("Order #" + order.getOrderId() + " is not in ALLOCATED status. Current: " + order.getStatus());
+            if (order.getStatus() != OrderStatus.READY) {
+                throw new IllegalStateException("Order #" + order.getOrderId() + " is not in READY status. Current: " + order.getStatus());
             }
             if (order.getShipment() != null) {
                 throw new IllegalStateException("Order #" + order.getOrderId() + " is already assigned to shipment #" + order.getShipment().getShipmentId());
@@ -109,7 +106,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         // Assign orders to shipment
         for (StoreOrder order : orders) {
             order.setShipment(savedShipment);
-            order.setStatus(OrderStatus.IN_TRANSIT);
+            order.setStatus(OrderStatus.SHIPPING);
         }
         storeOrderRepository.saveAll(orders);
 
@@ -166,6 +163,12 @@ public class ShipmentServiceImpl implements ShipmentService {
         // -------------------------
 
         shipmentRepository.save(shipment);
+        try {
+            ahamoveShipmentService.dispatchToAhamove(shipment);
+        } catch (Exception e) {
+            log.error("Lỗi khi dispatch shipment #{} lên AhaMove: {}", shipmentId, e.getMessage());
+            // Không throw exception để không ảnh hưởng luồng chính, có thể retry sau hoặc xử lý thủ công
+        }
 
         log.info("Shipment #{} is now IN_TRANSIT", shipmentId);
 
@@ -210,7 +213,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         // Update all store orders to COMPLETED
         List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipmentId);
         for (StoreOrder order : orders) {
-            order.setStatus(OrderStatus.CONFIRMED);
+            order.setStatus(OrderStatus.COMPLETED);
         }
         storeOrderRepository.saveAll(orders);
 
@@ -230,12 +233,13 @@ public class ShipmentServiceImpl implements ShipmentService {
         if (shipment.getStatus() == ShipmentStatus.DELIVERED) {
             throw new IllegalStateException("Cannot cancel a DELIVERED shipment");
         }
-
+        // Hủy đơn trên AhaMove nếu đã tạo
+        ahamoveShipmentService.cancelAhamoveOrder(shipment, reason); 
         // Release orders back to READY
         List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipmentId);
         for (StoreOrder order : orders) {
             order.setShipment(null);
-            order.setStatus(OrderStatus.ALLOCATED);
+            order.setStatus(OrderStatus.READY);
         }
         storeOrderRepository.saveAll(orders);
 
@@ -315,6 +319,9 @@ public class ShipmentServiceImpl implements ShipmentService {
                 .storeName(shipment.getStore().getName())
                 .productionPlanId(shipment.getProductionPlan() != null ? shipment.getProductionPlan().getPlanId() : null)
                 .status(shipment.getStatus().name())
+                .ahamoveOrderId(shipment.getAhamoveOrderId())
+                .trackingLink(shipment.getTrackingLink())
+                .ahamoveStatus(shipment.getAhamoveStatus())
                 .driverName(shipment.getDriverName())
                 .driverPhone(shipment.getDriverPhone())
                 .vehicleInfo(shipment.getVehicleInfo())
@@ -332,65 +339,74 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     private void sourceAndDeductStock(Shipment shipment) {
-        log.info("Starting precise sourcing for shipment #{} based on AllocationItems", shipment.getShipmentId());
+        log.info("Starting FIFO sourcing for shipment #{}", shipment.getShipmentId());
 
+        // 1. Aggregate Demand
         List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipment.getShipmentId());
-        
-        // Use default kitchen warehouse (id=1)
+        java.util.Map<Long, java.math.BigDecimal> productDemands = new java.util.HashMap<>();
+
+        for (StoreOrder order : orders) {
+            for (OrderDetail detail : order.getOrderDetails()) {
+                Long productId = detail.getProduct().getId();
+                java.math.BigDecimal qty = java.math.BigDecimal.valueOf(detail.getQuantity());
+                productDemands.merge(productId, qty, java.math.BigDecimal::add);
+            }
+        }
+
+        if (productDemands.isEmpty()) return;
+
+        // 2. Lock & Sourcing from Kitchen Warehouse (Assume 1st warehouse for simplicity or specific one)
         KitchenWarehouse kitchenWarehouse = kitchenWarehouseRepository.findById(1L)
                 .orElseThrow(() -> new ResourceNotFoundException("Central Kitchen Warehouse not found"));
 
-        for (StoreOrder order : orders) {
-            List<AllocationItem> allocationItems = allocationItemRepository.findByOrder_OrderId(order.getOrderId());
-            
-            for (AllocationItem item : allocationItems) {
-                Long productId = item.getProduct().getId();
-                Long planId = item.getProductionPlan().getPlanId();
-                BigDecimal deductQty = item.getFinalQty();
+        List<Long> productIds = new java.util.ArrayList<>(productDemands.keySet());
+        List<KitchenStockItem> stocks = kitchenStockItemRepository.lockProductsForDeduction(kitchenWarehouse.getWarehouseId(), productIds);
 
-                if (deductQty.compareTo(BigDecimal.ZERO) <= 0) continue;
+        // 3. FIFO Logic
+        for (java.util.Map.Entry<Long, java.math.BigDecimal> entry : productDemands.entrySet()) {
+            Long productId = entry.getKey();
+            java.math.BigDecimal remainingDemand = entry.getValue();
 
-                KitchenStockItem stock = kitchenStockItemRepository.findByWarehouseAndProductAndPlan(
-                        kitchenWarehouse.getWarehouseId(), productId, planId)
-                        .orElseThrow(() -> new IllegalStateException(
-                            "Insufficient stock in kitchen for product " + item.getProduct().getName() + 
-                            " from Production Plan #" + planId));
+            List<KitchenStockItem> productStocks = stocks.stream()
+                    .filter(s -> s.getProduct().getId().equals(productId))
+                    .collect(java.util.stream.Collectors.toList());
 
-                if (stock.getQuantity().compareTo(deductQty) < 0) {
-                    throw new IllegalStateException(
-                        "Stock mismatch for product " + item.getProduct().getName() + 
-                        " from Production Plan #" + planId + ". In stock: " + stock.getQuantity() + 
-                        ", required: " + deductQty);
-                }
+            for (KitchenStockItem stock : productStocks) {
+                if (remainingDemand.compareTo(java.math.BigDecimal.ZERO) <= 0) break;
 
-                // Deduct stock
+                java.math.BigDecimal deductQty = stock.getQuantity().min(remainingDemand);
                 stock.setQuantity(stock.getQuantity().subtract(deductQty));
-                kitchenStockItemRepository.save(stock);
+                remainingDemand = remainingDemand.subtract(deductQty);
 
                 // Create Sourcing Record for traceability
                 ShipmentSourcingRecord record = ShipmentSourcingRecord.builder()
                         .shipment(shipment)
-                        .product(item.getProduct())
+                        .product(stock.getProduct())
                         .quantity(deductQty)
-                        .expiryDate(stock.getExpiryDate())
-                        .productionPlan(item.getProductionPlan())
+                        .expiryDate(stock.getExpiryDate() != null ? stock.getExpiryDate() : java.time.LocalDate.now().plusDays(3))
+                        .productionPlan(stock.getProductionPlan())
                         .build();
                 shipmentSourcingRecordRepository.save(record);
 
                 // Log Transaction
                 InventoryTransaction transaction = InventoryTransaction.builder()
-                        .product(item.getProduct())
+                        .product(stock.getProduct())
                         .quantity(deductQty.negate())
                         .type(InventoryTransactionType.SHIPMENT_OUT)
                         .refId(shipment.getShipmentId())
                         .kitchenWarehouse(kitchenWarehouse)
                         .expiryDate(stock.getExpiryDate())
-                        .productionPlan(item.getProductionPlan())
+                        .productionPlan(stock.getProductionPlan())
                         .createdAt(LocalDateTime.now())
                         .build();
                 inventoryTransactionRepository.save(transaction);
             }
+
+            if (remainingDemand.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                throw new IllegalStateException("Insufficient stock in kitchen for product ID: " + productId + ". Missing: " + remainingDemand);
+            }
         }
+        kitchenStockItemRepository.saveAll(stocks);
     }
 
     private void confirmAndTransferStock(Shipment shipment) {
@@ -402,8 +418,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         List<ShipmentSourcingRecord> records = shipmentSourcingRecordRepository.findByShipment_ShipmentId(shipment.getShipmentId());
 
         for (ShipmentSourcingRecord record : records) {
-            // Find existing stock in store or create new
-            // For store warehouse, we group by product and production plan (batch)
+            // Add to Store Stock
             StoreStockItem storeStock = StoreStockItem.builder()
                     .warehouse(storeWarehouse)
                     .product(record.getProduct())
@@ -427,16 +442,14 @@ public class ShipmentServiceImpl implements ShipmentService {
             inventoryTransactionRepository.save(transaction);
         }
 
-        // --- UPDATE INVOICE STATUS & ORDER STATUS ---
+        // --- UPDATE INVOICE STATUS ---
         List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipment.getShipmentId());
         for (StoreOrder order : orders) {
-            order.setStatus(OrderStatus.CONFIRMED);
             if (order.getInvoice() != null) {
                 Invoice invoice = order.getInvoice();
                 invoice.setStatus(InvoiceStatus.FULFILLED);
                 invoiceRepository.save(invoice);
             }
         }
-        storeOrderRepository.saveAll(orders);
     }
 }

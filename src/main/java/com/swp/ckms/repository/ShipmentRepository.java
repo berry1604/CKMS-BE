@@ -22,4 +22,6 @@ public interface ShipmentRepository extends JpaRepository<Shipment, Long> {
 
     List<Shipment> findAllByStore_StoreIdAndStatusAndDeliveredAtBetween(
             Long storeId, ShipmentStatus status, java.time.LocalDateTime start, java.time.LocalDateTime end);
+
+    Optional<Shipment> findByAhamoveOrderId(String ahamoveOrderId);
 }
