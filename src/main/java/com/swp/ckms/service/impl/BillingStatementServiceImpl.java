@@ -376,7 +376,14 @@ public class BillingStatementServiceImpl implements BillingStatementService {
             throw new InvalidRequestException("Missing transaction reference");
         }
 
-        Long statementId = Long.parseLong(txnRef);
+        String statementIdStr = txnRef.split("_")[0];
+
+        Long statementId;
+        try {
+            statementId = Long.parseLong(statementIdStr);
+        } catch (NumberFormatException e) {
+            throw new InvalidRequestException("Invalid transaction reference format");
+        }
 
         BillingStatement statement = billingStatementRepository.findForUpdate(statementId)
                 .orElseThrow(() ->

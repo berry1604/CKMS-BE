@@ -31,7 +31,7 @@ public class VnPayGateway implements PaymentGateway {
         try {
             Map<String, String> params = new HashMap<>();
 
-            String txnRef = String.valueOf(referenceId);
+            String txnRef = referenceId + "_" + System.currentTimeMillis();
             String createDate = new SimpleDateFormat("yyyyMMddHHmmss")
                     .format(new Date());
 
