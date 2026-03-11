@@ -27,7 +27,6 @@ public class VnPayGateway implements PaymentGateway {
     private String returnUrl;
 
     @Override
-    @Override
     public String createPaymentUrl(Long referenceId, BigDecimal amount, String clientIp) {
         try {
             Map<String, String> params = new HashMap<>();
