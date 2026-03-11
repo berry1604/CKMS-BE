@@ -346,7 +346,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     }
 
     @Transactional(readOnly = true)
-    public String createVnPayUrl(Long statementId) {
+    public String createVnPayUrl(Long statementId, String clientIp) {
 
         BillingStatement statement = billingStatementRepository.findById(statementId)
                 .orElseThrow(() ->
@@ -360,7 +360,8 @@ public class BillingStatementServiceImpl implements BillingStatementService {
 
         return paymentGateway.createPaymentUrl(
                 statement.getStatementId(),
-                statement.getTotalAmount()
+                statement.getTotalAmount(),
+                clientIp
         );
     }
     @Override
@@ -420,5 +421,93 @@ public class BillingStatementServiceImpl implements BillingStatementService {
         invoiceRepository.bulkMarkAsPaid(statement.getStatementId(), InvoiceStatus.PAID);
 
         log.info("VNPay payment success for statement {}", statementId);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, String> handleVnPayIpn(Map<String, String> params) {
+        log.info("Received IPN request from VNPay: {}", params);
+        Map<String, String> response = new java.util.HashMap<>();
+
+        try {
+            if (!paymentGateway.verifySignature(params)) {
+                response.put("RspCode", "97");
+                response.put("Message", "Invalid Checksum");
+                return response;
+            }
+
+            String txnRef = params.get("vnp_TxnRef");
+            if (txnRef == null) {
+                response.put("RspCode", "99");
+                response.put("Message", "Missing transaction reference");
+                return response;
+            }
+
+            String statementIdStr = txnRef.split("_")[0];
+            Long statementId;
+            try {
+                statementId = Long.parseLong(statementIdStr);
+            } catch (NumberFormatException e) {
+                response.put("RspCode", "99");
+                response.put("Message", "Invalid transaction reference format");
+                return response;
+            }
+
+            BillingStatement statement = billingStatementRepository.findForUpdate(statementId).orElse(null);
+            if (statement == null) {
+                response.put("RspCode", "01");
+                response.put("Message", "Order not found");
+                return response;
+            }
+
+            if (statement.getStatus() == BillingStatementStatus.PAID) {
+                response.put("RspCode", "02");
+                response.put("Message", "Order already confirmed");
+                return response;
+            }
+
+            if (statement.getStatus() != BillingStatementStatus.ISSUED &&
+                    statement.getStatus() != BillingStatementStatus.OVERDUE) {
+                response.put("RspCode", "02");
+                response.put("Message", "Order already confirmed");
+                return response;
+            }
+
+            BigDecimal paidAmount = new BigDecimal(params.get("vnp_Amount"))
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+            if (paidAmount.compareTo(statement.getTotalAmount()) != 0) {
+                response.put("RspCode", "04");
+                response.put("Message", "Invalid amount");
+                return response;
+            }
+
+            if (!paymentGateway.isPaymentSuccessful(params)) {
+                log.warn("VNPay IPN payment failed for statement {}", statementId);
+                response.put("RspCode", "00");
+                response.put("Message", "Confirm Success - Transaction Failed at Gateway");
+                return response;
+            }
+
+            statement.setStatus(BillingStatementStatus.PAID);
+            statement.setPaidAt(LocalDateTime.now());
+            statement.setTransactionReference(
+                    paymentGateway.getTransactionReference(params)
+            );
+
+            invoiceRepository.bulkMarkAsPaid(statement.getStatementId(), InvoiceStatus.PAID);
+
+            log.info("VNPay IPN payment success for statement {}", statementId);
+            
+            response.put("RspCode", "00");
+            response.put("Message", "Confirm Success");
+            return response;
+
+        } catch (Exception e) {
+            log.error("Error processing VNPay IPN", e);
+            response.put("RspCode", "99");
+            response.put("Message", "Unknown error");
+            return response;
+        }
     }
 }

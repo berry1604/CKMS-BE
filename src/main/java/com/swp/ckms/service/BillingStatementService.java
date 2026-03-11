@@ -24,5 +24,6 @@ public interface BillingStatementService {
     
     void deleteStatement(Long id);
     void handleVnPayReturn(Map<String, String> params);
-    String createVnPayUrl(Long statementId);
+    Map<String, String> handleVnPayIpn(Map<String, String> params);
+    String createVnPayUrl(Long statementId, String clientIp);
 }

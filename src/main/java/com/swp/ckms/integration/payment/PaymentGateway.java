@@ -5,7 +5,7 @@ import java.util.Map;
 
 public interface PaymentGateway {
 
-    String createPaymentUrl(Long referenceId, BigDecimal amount);
+    String createPaymentUrl(Long referenceId, BigDecimal amount, String clientIp);
 
     boolean verifySignature(Map<String, String> params);
 

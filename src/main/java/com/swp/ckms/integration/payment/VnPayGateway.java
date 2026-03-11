@@ -27,13 +27,22 @@ public class VnPayGateway implements PaymentGateway {
     private String returnUrl;
 
     @Override
-    public String createPaymentUrl(Long referenceId, BigDecimal amount) {
+    @Override
+    public String createPaymentUrl(Long referenceId, BigDecimal amount, String clientIp) {
         try {
             Map<String, String> params = new HashMap<>();
 
             String txnRef = referenceId + "_" + System.currentTimeMillis();
-            String createDate = new SimpleDateFormat("yyyyMMddHHmmss")
-                    .format(new Date());
+            
+            // Fix Timezone chuẩn của VNPay GMT+7
+            Calendar cld = Calendar.getInstance(TimeZone.getTimeZone("Etc/GMT+7"));
+            SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMddHHmmss");
+            formatter.setTimeZone(TimeZone.getTimeZone("Etc/GMT+7"));
+            String createDate = formatter.format(cld.getTime());
+
+            // Add Expire Date (15 minutes limit)
+            cld.add(Calendar.MINUTE, 15);
+            String expireDate = formatter.format(cld.getTime());
 
             params.put("vnp_Version", "2.1.0");
             params.put("vnp_Command", "pay");
@@ -46,7 +55,8 @@ public class VnPayGateway implements PaymentGateway {
             params.put("vnp_Locale", "vn");
             params.put("vnp_ReturnUrl", returnUrl);
             params.put("vnp_CreateDate", createDate);
-            params.put("vnp_IpAddr", "127.0.0.1");
+            params.put("vnp_ExpireDate", expireDate);
+            params.put("vnp_IpAddr", clientIp != null && !clientIp.isEmpty() ? clientIp : "127.0.0.1");
 
             return buildUrlWithHash(params);
 
@@ -78,7 +88,7 @@ public class VnPayGateway implements PaymentGateway {
             String value = filtered.get(key);
             if (value != null && !value.isEmpty()) {
 
-                String encodedValue = URLEncoder.encode(value, StandardCharsets.US_ASCII);
+                String encodedValue = encodeParam(value);
 
                 hashData.append(key)
                         .append("=")
@@ -118,8 +128,8 @@ public class VnPayGateway implements PaymentGateway {
             String value = params.get(key);
             if (value != null && !value.isEmpty()) {
 
-                String encodedKey = URLEncoder.encode(key, StandardCharsets.US_ASCII);
-                String encodedValue = URLEncoder.encode(value, StandardCharsets.US_ASCII);
+                String encodedKey = encodeParam(key);
+                String encodedValue = encodeParam(value);
 
                 // Hash trên encoded value
                 hashData.append(key).append("=").append(encodedValue).append("&");
@@ -170,6 +180,20 @@ public class VnPayGateway implements PaymentGateway {
             return result.toString();
         } catch (Exception e) {
             throw new RuntimeException("Error generating HMAC", e);
+        }
+    }
+
+    private String encodeParam(String value) {
+        try {
+            return URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
+                    .replaceAll("\\+", "%20")     // Fix URL encoding for spaces
+                    .replaceAll("\\%21", "!")
+                    .replaceAll("\\%27", "'")
+                    .replaceAll("\\%28", "(")
+                    .replaceAll("\\%29", ")")
+                    .replaceAll("\\%7E", "~");
+        } catch (Exception e) {
+            return value;
         }
     }
 }
