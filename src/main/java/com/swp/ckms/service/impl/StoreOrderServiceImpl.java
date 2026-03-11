@@ -60,11 +60,9 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
 
-        FranchiseStore store = franchiseStoreRepository.findById(request.getStoreId())
-                .orElseThrow(() -> new ResourceNotFoundException("Store not found with ID: " + request.getStoreId()));
-
-        if (user.getStore() == null || !user.getStore().getStoreId().equals(store.getStoreId())) {
-            throw new IllegalArgumentException("User does not belong to the requested store");
+        FranchiseStore store = user.getStore();
+        if (store == null) {
+            throw new IllegalArgumentException("User does not belong to any store");
         }
 
         StoreOrder order = StoreOrder.builder()
@@ -72,7 +70,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .createdByUser(user)
                 .orderDate(LocalDateTime.now())
                 .deliveryDate(request.getDeliveryDate())
-                .status(OrderStatus.SUBMITTED)
+                .status(OrderStatus.DRAFT)
                 .batchId(null)
                 .build();
 
@@ -85,7 +83,8 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             if (currentQty == null) currentQty = BigDecimal.ZERO;
 
             double newOrderQty = request.getItems().stream()
-                    .mapToDouble(OrderItemRequest::getQuantity)
+                    .map(OrderItemRequest::getQuantity)
+                    .mapToInt(Integer::intValue)
                     .sum();
 
             if (currentQty.add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
@@ -95,12 +94,21 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             }
         }
 
+        List<Long> productIds = request.getItems().stream()
+                .map(OrderItemRequest::getProductId)
+                .collect(Collectors.toList());
+
+        java.util.Map<Long, Product> productMap = productRepository.findAllById(productIds).stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+
         List<OrderDetail> details = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
 
         for (OrderItemRequest itemReq : request.getItems()) {
-            Product product = productRepository.findById(itemReq.getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product not found with ID: " + itemReq.getProductId()));
+            Product product = productMap.get(itemReq.getProductId());
+            if (product == null) {
+                throw new ResourceNotFoundException("Product not found with ID: " + itemReq.getProductId());
+            }
 
             OrderDetail detail = OrderDetail.builder()
                     .order(order)
@@ -214,8 +222,8 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             BigDecimal currentQty = storeStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
             if (currentQty == null) currentQty = BigDecimal.ZERO;
 
-            double oldOrderQty = order.getOrderDetails().stream().mapToDouble(com.swp.ckms.entity.OrderDetail::getQuantity).sum();
-            double newOrderQty = request.getItems().stream().mapToDouble(com.swp.ckms.dto.request.OrderItemRequest::getQuantity).sum();
+            int oldOrderQty = order.getOrderDetails().stream().mapToInt(com.swp.ckms.entity.OrderDetail::getQuantity).sum();
+            int newOrderQty = request.getItems().stream().mapToInt(com.swp.ckms.dto.request.OrderItemRequest::getQuantity).sum();
 
             if (currentQty.subtract(BigDecimal.valueOf(oldOrderQty)).add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
                 throw new BusinessRuleViolationException("Updated order exceeds warehouse capacity.");
@@ -226,9 +234,18 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         order.getOrderDetails().clear();
         BigDecimal totalAmount = BigDecimal.ZERO;
 
+        List<Long> productIds = request.getItems().stream()
+                .map(com.swp.ckms.dto.request.OrderItemRequest::getProductId)
+                .collect(Collectors.toList());
+
+        java.util.Map<Long, Product> productMap = productRepository.findAllById(productIds).stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+
         for (com.swp.ckms.dto.request.OrderItemRequest itemReq : request.getItems()) {
-            Product product = productRepository.findById(itemReq.getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+            Product product = productMap.get(itemReq.getProductId());
+            if (product == null) {
+                throw new ResourceNotFoundException("Product not found");
+            }
 
             OrderDetail detail = OrderDetail.builder()
                     .order(order)
@@ -371,5 +388,37 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .unitPrice(detail.getUnitPrice())
                 .subTotal(subTotal)
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public StoreOrderResponse submitOrder(Long id, String username) {
+
+        StoreOrder order = storeOrderRepository.findById(id)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Order not found with ID: " + id)
+                );
+
+        if (order.getStatus() != OrderStatus.DRAFT) {
+            throw new BusinessRuleViolationException(
+                    "Only DRAFT orders can be submitted (Current: " + order.getStatus() + ")"
+            );
+        }
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("User not found with username: " + username)
+                );
+
+        if (user.getStore() == null ||
+                !user.getStore().getStoreId().equals(order.getStore().getStoreId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You can only submit your own store orders"
+            );
+        }
+
+        order.setStatus(OrderStatus.SUBMITTED);
+
+        return mapToOrderResponse(storeOrderRepository.save(order));
     }
 }
