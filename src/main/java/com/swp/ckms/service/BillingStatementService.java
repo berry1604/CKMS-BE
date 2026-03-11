@@ -13,6 +13,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
+import java.util.Map;
 
 public interface BillingStatementService {
     BillingStatementResponse generateManualStatement(Long storeId, LocalDate periodStart, LocalDate periodEnd);
@@ -22,4 +23,7 @@ public interface BillingStatementService {
     PaymentStatementResponse payStatement(Long id, PaymentStatementRequest request);
     
     void deleteStatement(Long id);
+    void handleVnPayReturn(Map<String, String> params);
+    Map<String, String> handleVnPayIpn(Map<String, String> params);
+    String createVnPayUrl(Long statementId, String clientIp);
 }

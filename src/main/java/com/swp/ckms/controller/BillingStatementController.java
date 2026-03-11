@@ -21,7 +21,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDate;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/billing-statements")
@@ -124,5 +126,47 @@ public class BillingStatementController {
                         .message("Billing statement deleted and invoices released successfully")
                         .timestamp(java.time.LocalDateTime.now())
                         .build());
+    }
+
+    @GetMapping("/vnpay-return")
+    public ResponseEntity<String> handleVnPayReturn(
+            @RequestParam Map<String, String> params
+    ) {
+        billingStatementService.handleVnPayReturn(params);
+        return ResponseEntity.ok("Payment processed successfully");
+    }
+
+    @GetMapping("/vnpay-ipn")
+    public ResponseEntity<Map<String, String>> handleVnPayIpn(
+            @RequestParam Map<String, String> params
+    ) {
+        Map<String, String> response = billingStatementService.handleVnPayIpn(params);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/vnpay")
+    @PreAuthorize("hasAuthority('CONFIRM_PAYMENT')")
+    public ResponseEntity<ApiResponse<String>> createVnPayPayment(@PathVariable Long id, HttpServletRequest request) {
+
+        String ipAddress = request.getHeader("X-Forwarded-For");
+        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
+            ipAddress = request.getRemoteAddr();
+        }
+        
+        // Handle cases where X-Forwarded-For contains multiple IPs
+        if (ipAddress != null && ipAddress.contains(",")) {
+            ipAddress = ipAddress.split(",")[0].trim();
+        }
+
+        String paymentUrl = billingStatementService.createVnPayUrl(id, ipAddress);
+
+        return ResponseEntity.ok(
+                ApiResponse.<String>builder()
+                        .status(HttpStatus.OK.value())
+                        .message("VNPay payment URL generated successfully")
+                        .data(paymentUrl)
+                        .timestamp(java.time.LocalDateTime.now())
+                        .build()
+        );
     }
 }
