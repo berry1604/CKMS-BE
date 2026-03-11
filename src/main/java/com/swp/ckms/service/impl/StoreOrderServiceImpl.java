@@ -72,7 +72,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .createdByUser(user)
                 .orderDate(LocalDateTime.now())
                 .deliveryDate(request.getDeliveryDate())
-                .status(OrderStatus.SUBMITTED)
+                .status(OrderStatus.DRAFT)
                 .batchId(null)
                 .build();
 
@@ -371,5 +371,37 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .unitPrice(detail.getUnitPrice())
                 .subTotal(subTotal)
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public StoreOrderResponse submitOrder(Long id, String username) {
+
+        StoreOrder order = storeOrderRepository.findById(id)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Order not found with ID: " + id)
+                );
+
+        if (order.getStatus() != OrderStatus.DRAFT) {
+            throw new BusinessRuleViolationException(
+                    "Only DRAFT orders can be submitted (Current: " + order.getStatus() + ")"
+            );
+        }
+
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("User not found with username: " + username)
+                );
+
+        if (user.getStore() == null ||
+                !user.getStore().getStoreId().equals(order.getStore().getStoreId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You can only submit your own store orders"
+            );
+        }
+
+        order.setStatus(OrderStatus.SUBMITTED);
+
+        return mapToOrderResponse(storeOrderRepository.save(order));
     }
 }

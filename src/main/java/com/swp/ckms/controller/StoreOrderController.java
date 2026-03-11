@@ -89,6 +89,8 @@ public class StoreOrderController {
         return ResponseEntity.ok(response);
     }
 
+
+
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('CREATE_STORE_ORDER')")
     public ResponseEntity<StoreOrderResponse> updateOrder(
