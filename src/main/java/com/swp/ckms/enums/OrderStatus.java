@@ -10,5 +10,6 @@ public enum OrderStatus {
     IN_TRANSIT,  // Đang trên xe giao hàng
     DELIVERED,   // Đã giao đến Store
     CONFIRMED,   // Đã chốt tài chính/Invoice
+    CANCELLED,   // Người dùng hủy đơn
     REJECTED     // Đơn bị từ chối
 }
