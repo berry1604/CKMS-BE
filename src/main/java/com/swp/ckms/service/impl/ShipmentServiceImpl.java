@@ -42,6 +42,8 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final StoreWarehouseRepository storeWarehouseRepository;
     private final InvoiceRepository invoiceRepository;
     private final AllocationItemRepository allocationItemRepository;
+    private final com.swp.ckms.service.NotificationService notificationService;
+    private final com.swp.ckms.util.RecipientResolver recipientResolver;
 
 //-----------------------------------------------------------
 
@@ -166,6 +168,31 @@ public class ShipmentServiceImpl implements ShipmentService {
         // -------------------------
 
         shipmentRepository.save(shipment);
+
+        // --- TRIGGER NOTIFICATION ---
+        try {
+            String recipient = recipientResolver.resolveStoreManagerEmail(shipment.getStore().getStoreId(), 
+                    shipment.getCreatedBy() != null ? shipment.getCreatedBy().getUserId() : null);
+            if (recipient != null) {
+                java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                payload.put("shipmentId", shipment.getShipmentId());
+                payload.put("storeName", shipment.getStore().getName());
+                payload.put("driverName", shipment.getDriverName());
+                payload.put("driverPhone", shipment.getDriverPhone());
+                payload.put("vehicleInfo", shipment.getVehicleInfo());
+                payload.put("trackingLink", "http://localhost:5173/shipments/" + shipment.getShipmentId());
+
+                notificationService.createEmailNotification(
+                        com.swp.ckms.enums.NotificationType.SHIPMENT_STARTED,
+                        recipient,
+                        "shipment-started.html",
+                        payload,
+                        "SHIPMENT_STARTED_" + shipment.getShipmentId()
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to trigger shipment started notification", e);
+        }
 
         log.info("Shipment #{} is now IN_TRANSIT", shipmentId);
 
