@@ -54,6 +54,8 @@ public class StoreOrderServiceImpl implements StoreOrderService {
     private final InvoiceRepository invoiceRepository;
     private final StoreWarehouseRepository storeWarehouseRepository;
     private final StoreStockItemRepository storeStockItemRepository;
+    private final com.swp.ckms.service.NotificationService notificationService;
+    private final com.swp.ckms.util.RecipientResolver recipientResolver;
 
     @Override
     public StoreOrderResponse createOrder(StoreOrderRequest request, String username) {
@@ -370,7 +372,46 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             throw new IllegalArgumentException("Invalid target status for approval flow: " + newStatus);
         }
 
-        return mapToOrderResponse(storeOrderRepository.save(order));
+        StoreOrder savedOrder = storeOrderRepository.save(order);
+
+        // --- TRIGGER NOTIFICATION ---
+        try {
+            String recipient = recipientResolver.resolveStoreManagerEmail(order.getStore().getStoreId(), order.getCreatedByUser().getUserId());
+            if (recipient != null) {
+                java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                payload.put("orderId", savedOrder.getOrderId());
+                payload.put("storeName", savedOrder.getStore().getName());
+                payload.put("status", savedOrder.getStatus().name());
+                payload.put("totalAmount", savedOrder.getTotalAmount());
+                payload.put("orderDate", savedOrder.getOrderDate().toString());
+                payload.put("dashboardLink", "http://localhost:5173/history");
+                
+                // Add Items for the table
+                List<java.util.Map<String, Object>> items = savedOrder.getOrderDetails().stream()
+                        .map(d -> java.util.Map.<String, Object>of(
+                                "productName", d.getProduct().getName(),
+                                "quantity", d.getQuantity(),
+                                "unitPrice", d.getUnitPrice()
+                        ))
+                        .collect(Collectors.toList());
+                payload.put("items", items);
+                
+                String dedupKey = "ORDER_STATUS_" + savedOrder.getOrderId() + "_" + savedOrder.getStatus().name();
+                String template = (savedOrder.getStatus() == OrderStatus.APPROVED) ? "order-approved.html" : "order-rejected.html";
+                
+                notificationService.createEmailNotification(
+                        com.swp.ckms.enums.NotificationType.ORDER_STATUS_CHANGED,
+                        recipient,
+                        template,
+                        payload,
+                        dedupKey
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to trigger order status notification", e);
+        }
+
+        return mapToOrderResponse(savedOrder);
     }
 
     private StoreOrderResponse mapToOrderResponse(StoreOrder order) {
@@ -434,6 +475,30 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
         order.setStatus(OrderStatus.SUBMITTED);
 
-        return mapToOrderResponse(storeOrderRepository.save(order));
+        StoreOrder savedOrder = storeOrderRepository.save(order);
+
+        // --- TRIGGER NOTIFICATION ---
+        try {
+            String recipient = recipientResolver.resolveCoordinatorEmail(1L);
+            if (recipient != null) {
+                java.util.Map<String, Object> payload = java.util.Map.of(
+                        "orderId", savedOrder.getOrderId(),
+                        "storeName", savedOrder.getStore().getName(),
+                        "orderDate", savedOrder.getOrderDate().toString()
+                );
+                
+                notificationService.createEmailNotification(
+                        com.swp.ckms.enums.NotificationType.ORDER_SUBMITTED,
+                        recipient,
+                        "order-submitted.html",
+                        payload,
+                        "ORDER_SUBMITTED_" + savedOrder.getOrderId()
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to trigger order submission notification", e);
+        }
+
+        return mapToOrderResponse(savedOrder);
     }
 }

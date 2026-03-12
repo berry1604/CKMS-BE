@@ -54,6 +54,8 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     private final PaymentMethodRepository paymentMethodRepository;
     private final com.swp.ckms.repository.ShipmentRepository shipmentRepository;
     private final PaymentGateway paymentGateway;
+    private final com.swp.ckms.service.NotificationService notificationService;
+    private final com.swp.ckms.util.RecipientResolver recipientResolver;
 
     @Override
     @Transactional
@@ -114,7 +116,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
         String cycleMonth = periodStart.format(DateTimeFormatter.ofPattern("MM/yyyy"));
         String cycleName = "Kỳ T" + cycleMonth;
 
-        return BillingStatementResponse.builder()
+        BillingStatementResponse response = BillingStatementResponse.builder()
                 .statementId(savedStatement.getStatementId())
                 .storeId(storeId)
                 .cycleName(cycleName)
@@ -126,6 +128,34 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .status(savedStatement.getStatus().name())
                 .invoiceCount(invoices.size())
                 .build();
+
+        // --- TRIGGER NOTIFICATION ---
+        try {
+            String recipient = recipientResolver.resolveStoreManagerEmail(storeId, null);
+            if (recipient != null) {
+                java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                payload.put("statementId", savedStatement.getStatementId());
+                payload.put("storeName", store.getName());
+                payload.put("orderTotal", orderTotal);
+                payload.put("shippingTotal", shippingTotal);
+                payload.put("totalAmount", totalAmount);
+                payload.put("issuedDate", LocalDate.now().toString());
+                payload.put("dueDate", LocalDate.now().plusDays(7).toString());
+                payload.put("paymentLink", "http://localhost:5173/billing/pay/" + savedStatement.getStatementId());
+
+                notificationService.createEmailNotification(
+                        com.swp.ckms.enums.NotificationType.BILLING_STATEMENT_CREATED,
+                        recipient,
+                        "billing-statement.html",
+                        payload,
+                        "BILLING_ISSUE_" + savedStatement.getStatementId()
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to trigger billing statement notification", e);
+        }
+
+        return response;
     }
 
     @Override
@@ -199,6 +229,28 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 invoiceRepository.saveAll(invoices);
                 
                 totalStatementsCreated++;
+                
+                // --- TRIGGER NOTIFICATION (BATCH) ---
+                try {
+                    String recipient = recipientResolver.resolveStoreManagerEmail(storeId, null);
+                    if (recipient != null) {
+                        java.util.Map<String, Object> payload = java.util.Map.of(
+                                "statementId", savedStatement.getStatementId(),
+                                "storeName", store.getName(),
+                                "totalAmount", totalAmount,
+                                "paymentLink", "http://localhost:5173/billing/pay/" + savedStatement.getStatementId()
+                        );
+                        notificationService.createEmailNotification(
+                                com.swp.ckms.enums.NotificationType.BILLING_STATEMENT_CREATED,
+                                recipient,
+                                "billing-statement.html",
+                                payload,
+                                "BILLING_ISSUE_" + savedStatement.getStatementId()
+                        );
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to trigger batch billing notification for store {}", storeId);
+                }
 
             } catch (Exception e) {
                 log.error("Batch error processing storeId {}: {}", storeId, e.getMessage(), e);
