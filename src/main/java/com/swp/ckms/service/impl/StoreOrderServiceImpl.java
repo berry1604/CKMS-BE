@@ -265,23 +265,38 @@ public class StoreOrderServiceImpl implements StoreOrderService {
     @Override
     @Transactional
     public void cancelOrder(Long id, String username) {
+
         StoreOrder order = storeOrderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-
-        // BR-07: Modification Window Guard
-        if (order.getStatus() != OrderStatus.SUBMITTED) {
-            throw new BusinessRuleViolationException("Cannot cancel order because it is already processed (Status: " + order.getStatus() + ")");
-        }
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        if (user.getStore() == null || !user.getStore().getStoreId().equals(order.getStore().getStoreId())) {
-            throw new org.springframework.security.access.AccessDeniedException("You can only cancel orders of your own store");
+        if (user.getStore() == null ||
+                !user.getStore().getStoreId().equals(order.getStore().getStoreId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You can only cancel orders of your own store"
+            );
         }
 
-        order.setStatus(OrderStatus.REJECTED);
-        storeOrderRepository.save(order);
+        // Guard điều kiện mới
+        if (order.getStatus() == OrderStatus.DRAFT) {
+            // Hard delete
+            storeOrderRepository.delete(order);
+            return;
+        }
+
+        if (order.getStatus() == OrderStatus.SUBMITTED) {
+            order.setStatus(OrderStatus.CANCELLED);
+            storeOrderRepository.save(order);
+            return;
+        }
+
+        // Các trạng thái còn lại không cho hủy
+        throw new BusinessRuleViolationException(
+                "Cannot cancel an order that has been processed (Current status: "
+                        + order.getStatus() + ")"
+        );
     }
 
     @Override
