@@ -16,4 +16,5 @@ public interface StoreOrderService {
     StoreOrderResponse updateOrder(Long id, StoreOrderRequest request, String username);
     void cancelOrder(Long id, String username);
     StoreOrderResponse submitOrder(Long id, String username);
+
 }

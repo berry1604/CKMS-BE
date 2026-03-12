@@ -9,4 +9,5 @@ public interface MaterialService {
     List<MaterialResponse> getAllMaterials();
     MaterialResponse createMaterial(MaterialRequest request);
     MaterialResponse updateMaterial(Long id, MaterialRequest request);
+    void deleteMaterial(Long id);
 }

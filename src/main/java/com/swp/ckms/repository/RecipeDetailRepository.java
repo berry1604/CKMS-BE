@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface RecipeDetailRepository extends JpaRepository<RecipeDetail, Long> {
+    boolean existsByMaterial_IdAndRecipe_IsActiveTrue(Long materialId);
 }
