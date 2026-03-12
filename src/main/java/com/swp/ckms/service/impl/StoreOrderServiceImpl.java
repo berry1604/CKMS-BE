@@ -202,7 +202,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with ID: " + id));
 
         // BR-07: Modification Window Guard
-        if (order.getStatus() != OrderStatus.SUBMITTED) {
+        if (order.getStatus() != OrderStatus.DRAFT) {
             throw new BusinessRuleViolationException("Cannot modify order because it is already processed (Status: " + order.getStatus() + ")");
         }
 
