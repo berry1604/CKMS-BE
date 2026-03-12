@@ -54,17 +54,17 @@ public class StoreOrderServiceImpl implements StoreOrderService {
     private final InvoiceRepository invoiceRepository;
     private final StoreWarehouseRepository storeWarehouseRepository;
     private final StoreStockItemRepository storeStockItemRepository;
+    private final com.swp.ckms.service.NotificationService notificationService;
+    private final com.swp.ckms.util.RecipientResolver recipientResolver;
 
     @Override
     public StoreOrderResponse createOrder(StoreOrderRequest request, String username) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with username: " + username));
 
-        FranchiseStore store = franchiseStoreRepository.findById(request.getStoreId())
-                .orElseThrow(() -> new ResourceNotFoundException("Store not found with ID: " + request.getStoreId()));
-
-        if (user.getStore() == null || !user.getStore().getStoreId().equals(store.getStoreId())) {
-            throw new IllegalArgumentException("User does not belong to the requested store");
+        FranchiseStore store = user.getStore();
+        if (store == null) {
+            throw new IllegalArgumentException("User does not belong to any store");
         }
 
         StoreOrder order = StoreOrder.builder()
@@ -85,7 +85,8 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             if (currentQty == null) currentQty = BigDecimal.ZERO;
 
             double newOrderQty = request.getItems().stream()
-                    .mapToDouble(OrderItemRequest::getQuantity)
+                    .map(OrderItemRequest::getQuantity)
+                    .mapToInt(Integer::intValue)
                     .sum();
 
             if (currentQty.add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
@@ -95,12 +96,21 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             }
         }
 
+        List<Long> productIds = request.getItems().stream()
+                .map(OrderItemRequest::getProductId)
+                .collect(Collectors.toList());
+
+        java.util.Map<Long, Product> productMap = productRepository.findAllById(productIds).stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+
         List<OrderDetail> details = new ArrayList<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
 
         for (OrderItemRequest itemReq : request.getItems()) {
-            Product product = productRepository.findById(itemReq.getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product not found with ID: " + itemReq.getProductId()));
+            Product product = productMap.get(itemReq.getProductId());
+            if (product == null) {
+                throw new ResourceNotFoundException("Product not found with ID: " + itemReq.getProductId());
+            }
 
             OrderDetail detail = OrderDetail.builder()
                     .order(order)
@@ -214,8 +224,8 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             BigDecimal currentQty = storeStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
             if (currentQty == null) currentQty = BigDecimal.ZERO;
 
-            double oldOrderQty = order.getOrderDetails().stream().mapToDouble(com.swp.ckms.entity.OrderDetail::getQuantity).sum();
-            double newOrderQty = request.getItems().stream().mapToDouble(com.swp.ckms.dto.request.OrderItemRequest::getQuantity).sum();
+            int oldOrderQty = order.getOrderDetails().stream().mapToInt(com.swp.ckms.entity.OrderDetail::getQuantity).sum();
+            int newOrderQty = request.getItems().stream().mapToInt(com.swp.ckms.dto.request.OrderItemRequest::getQuantity).sum();
 
             if (currentQty.subtract(BigDecimal.valueOf(oldOrderQty)).add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
                 throw new BusinessRuleViolationException("Updated order exceeds warehouse capacity.");
@@ -226,9 +236,18 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         order.getOrderDetails().clear();
         BigDecimal totalAmount = BigDecimal.ZERO;
 
+        List<Long> productIds = request.getItems().stream()
+                .map(com.swp.ckms.dto.request.OrderItemRequest::getProductId)
+                .collect(Collectors.toList());
+
+        java.util.Map<Long, Product> productMap = productRepository.findAllById(productIds).stream()
+                .collect(Collectors.toMap(Product::getId, p -> p));
+
         for (com.swp.ckms.dto.request.OrderItemRequest itemReq : request.getItems()) {
-            Product product = productRepository.findById(itemReq.getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+            Product product = productMap.get(itemReq.getProductId());
+            if (product == null) {
+                throw new ResourceNotFoundException("Product not found");
+            }
 
             OrderDetail detail = OrderDetail.builder()
                     .order(order)
@@ -353,7 +372,46 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             throw new IllegalArgumentException("Invalid target status for approval flow: " + newStatus);
         }
 
-        return mapToOrderResponse(storeOrderRepository.save(order));
+        StoreOrder savedOrder = storeOrderRepository.save(order);
+
+        // --- TRIGGER NOTIFICATION ---
+        try {
+            String recipient = recipientResolver.resolveStoreManagerEmail(order.getStore().getStoreId(), order.getCreatedByUser().getUserId());
+            if (recipient != null) {
+                java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                payload.put("orderId", savedOrder.getOrderId());
+                payload.put("storeName", savedOrder.getStore().getName());
+                payload.put("status", savedOrder.getStatus().name());
+                payload.put("totalAmount", savedOrder.getTotalAmount());
+                payload.put("orderDate", savedOrder.getOrderDate().toString());
+                payload.put("dashboardLink", "http://localhost:5173/history");
+                
+                // Add Items for the table
+                List<java.util.Map<String, Object>> items = savedOrder.getOrderDetails().stream()
+                        .map(d -> java.util.Map.<String, Object>of(
+                                "productName", d.getProduct().getName(),
+                                "quantity", d.getQuantity(),
+                                "unitPrice", d.getUnitPrice()
+                        ))
+                        .collect(Collectors.toList());
+                payload.put("items", items);
+                
+                String dedupKey = "ORDER_STATUS_" + savedOrder.getOrderId() + "_" + savedOrder.getStatus().name();
+                String template = (savedOrder.getStatus() == OrderStatus.APPROVED) ? "order-approved.html" : "order-rejected.html";
+                
+                notificationService.createEmailNotification(
+                        com.swp.ckms.enums.NotificationType.ORDER_STATUS_CHANGED,
+                        recipient,
+                        template,
+                        payload,
+                        dedupKey
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to trigger order status notification", e);
+        }
+
+        return mapToOrderResponse(savedOrder);
     }
 
     private StoreOrderResponse mapToOrderResponse(StoreOrder order) {
@@ -417,6 +475,30 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
         order.setStatus(OrderStatus.SUBMITTED);
 
-        return mapToOrderResponse(storeOrderRepository.save(order));
+        StoreOrder savedOrder = storeOrderRepository.save(order);
+
+        // --- TRIGGER NOTIFICATION ---
+        try {
+            String recipient = recipientResolver.resolveCoordinatorEmail(1L);
+            if (recipient != null) {
+                java.util.Map<String, Object> payload = java.util.Map.of(
+                        "orderId", savedOrder.getOrderId(),
+                        "storeName", savedOrder.getStore().getName(),
+                        "orderDate", savedOrder.getOrderDate().toString()
+                );
+                
+                notificationService.createEmailNotification(
+                        com.swp.ckms.enums.NotificationType.ORDER_SUBMITTED,
+                        recipient,
+                        "order-submitted.html",
+                        payload,
+                        "ORDER_SUBMITTED_" + savedOrder.getOrderId()
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to trigger order submission notification", e);
+        }
+
+        return mapToOrderResponse(savedOrder);
     }
 }
