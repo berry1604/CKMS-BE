@@ -55,4 +55,19 @@ public class MaterialController {
                 .timestamp(LocalDateTime.now())
                 .build());
     }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('MANAGE_CATALOG')")
+    public ResponseEntity<ApiResponse<Void>> deleteMaterial(@PathVariable Long id) {
+
+        materialService.deleteMaterial(id);
+
+        return ResponseEntity.ok(ApiResponse.<Void>builder()
+                .status(HttpStatus.OK.value())
+                .message("Material deleted successfully")
+                .timestamp(LocalDateTime.now())
+                .build());
+    }
+
+
 }

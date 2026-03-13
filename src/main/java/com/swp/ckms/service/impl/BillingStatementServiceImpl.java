@@ -19,6 +19,7 @@ import com.swp.ckms.exception.business.DuplicateResourceException;
 import com.swp.ckms.exception.business.ForbiddenException;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.exception.validation.InvalidRequestException;
+import com.swp.ckms.integration.payment.PaymentGateway;
 import com.swp.ckms.repository.BillingStatementRepository;
 import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.InvoiceRepository;
@@ -34,11 +35,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -50,6 +53,9 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     private final FranchiseStoreRepository franchiseStoreRepository;
     private final PaymentMethodRepository paymentMethodRepository;
     private final com.swp.ckms.repository.ShipmentRepository shipmentRepository;
+    private final PaymentGateway paymentGateway;
+    private final com.swp.ckms.service.NotificationService notificationService;
+    private final com.swp.ckms.util.RecipientResolver recipientResolver;
 
     @Override
     @Transactional
@@ -110,7 +116,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
         String cycleMonth = periodStart.format(DateTimeFormatter.ofPattern("MM/yyyy"));
         String cycleName = "Kỳ T" + cycleMonth;
 
-        return BillingStatementResponse.builder()
+        BillingStatementResponse response = BillingStatementResponse.builder()
                 .statementId(savedStatement.getStatementId())
                 .storeId(storeId)
                 .cycleName(cycleName)
@@ -122,6 +128,34 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .status(savedStatement.getStatus().name())
                 .invoiceCount(invoices.size())
                 .build();
+
+        // --- TRIGGER NOTIFICATION ---
+        try {
+            String recipient = recipientResolver.resolveStoreManagerEmail(storeId, null);
+            if (recipient != null) {
+                java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                payload.put("statementId", savedStatement.getStatementId());
+                payload.put("storeName", store.getName());
+                payload.put("orderTotal", orderTotal);
+                payload.put("shippingTotal", shippingTotal);
+                payload.put("totalAmount", totalAmount);
+                payload.put("issuedDate", LocalDate.now().toString());
+                payload.put("dueDate", LocalDate.now().plusDays(7).toString());
+                payload.put("paymentLink", "http://localhost:5173/billing/pay/" + savedStatement.getStatementId());
+
+                notificationService.createEmailNotification(
+                        com.swp.ckms.enums.NotificationType.BILLING_STATEMENT_CREATED,
+                        recipient,
+                        "billing-statement.html",
+                        payload,
+                        "BILLING_ISSUE_" + savedStatement.getStatementId()
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to trigger billing statement notification", e);
+        }
+
+        return response;
     }
 
     @Override
@@ -195,6 +229,28 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 invoiceRepository.saveAll(invoices);
                 
                 totalStatementsCreated++;
+                
+                // --- TRIGGER NOTIFICATION (BATCH) ---
+                try {
+                    String recipient = recipientResolver.resolveStoreManagerEmail(storeId, null);
+                    if (recipient != null) {
+                        java.util.Map<String, Object> payload = java.util.Map.of(
+                                "statementId", savedStatement.getStatementId(),
+                                "storeName", store.getName(),
+                                "totalAmount", totalAmount,
+                                "paymentLink", "http://localhost:5173/billing/pay/" + savedStatement.getStatementId()
+                        );
+                        notificationService.createEmailNotification(
+                                com.swp.ckms.enums.NotificationType.BILLING_STATEMENT_CREATED,
+                                recipient,
+                                "billing-statement.html",
+                                payload,
+                                "BILLING_ISSUE_" + savedStatement.getStatementId()
+                        );
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to trigger batch billing notification for store {}", storeId);
+                }
 
             } catch (Exception e) {
                 log.error("Batch error processing storeId {}: {}", storeId, e.getMessage(), e);
@@ -339,5 +395,171 @@ public class BillingStatementServiceImpl implements BillingStatementService {
 
         billingStatementRepository.delete(statement);
         log.info("Deleted Billing Statement #{} and released {} invoices", id, invoices.size());
+    }
+
+    @Transactional(readOnly = true)
+    public String createVnPayUrl(Long statementId, String clientIp) {
+
+        BillingStatement statement = billingStatementRepository.findById(statementId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Billing statement not found with id: " + statementId)
+                );
+
+        if (statement.getStatus() != BillingStatementStatus.ISSUED &&
+                statement.getStatus() != BillingStatementStatus.OVERDUE) {
+            throw new InvalidRequestException("Only ISSUED or OVERDUE statements can be paid");
+        }
+
+        return paymentGateway.createPaymentUrl(
+                statement.getStatementId(),
+                statement.getTotalAmount(),
+                clientIp
+        );
+    }
+    @Override
+    @Transactional
+    public void handleVnPayReturn(Map<String, String> params) {
+
+        if (!paymentGateway.verifySignature(params)) {
+            throw new InvalidRequestException("Invalid VNPay signature");
+        }
+
+        String txnRef = params.get("vnp_TxnRef");
+        if (txnRef == null) {
+            throw new InvalidRequestException("Missing transaction reference");
+        }
+
+        String statementIdStr = txnRef.split("_")[0];
+
+        Long statementId;
+        try {
+            statementId = Long.parseLong(statementIdStr);
+        } catch (NumberFormatException e) {
+            throw new InvalidRequestException("Invalid transaction reference format");
+        }
+
+        BillingStatement statement = billingStatementRepository.findForUpdate(statementId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Billing statement not found with id: " + statementId)
+                );
+
+        if (statement.getStatus() == BillingStatementStatus.PAID) {
+            return;
+        }
+
+        if (statement.getStatus() != BillingStatementStatus.ISSUED &&
+                statement.getStatus() != BillingStatementStatus.OVERDUE) {
+            throw new InvalidRequestException("Invalid billing statement state for payment");
+        }
+
+        if (!paymentGateway.isPaymentSuccessful(params)) {
+            log.warn("VNPay payment failed for statement {}", statementId);
+            return;
+        }
+
+        BigDecimal paidAmount = new BigDecimal(params.get("vnp_Amount"))
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+        if (paidAmount.compareTo(statement.getTotalAmount()) != 0) {
+            throw new InvalidRequestException("Payment amount mismatch");
+        }
+
+        statement.setStatus(BillingStatementStatus.PAID);
+        statement.setPaidAt(LocalDateTime.now());
+        statement.setTransactionReference(
+                paymentGateway.getTransactionReference(params)
+        );
+
+        invoiceRepository.bulkMarkAsPaid(statement.getStatementId(), InvoiceStatus.PAID);
+
+        log.info("VNPay payment success for statement {}", statementId);
+    }
+
+    @Override
+    @Transactional
+    public Map<String, String> handleVnPayIpn(Map<String, String> params) {
+        log.info("Received IPN request from VNPay: {}", params);
+        Map<String, String> response = new java.util.HashMap<>();
+
+        try {
+            if (!paymentGateway.verifySignature(params)) {
+                response.put("RspCode", "97");
+                response.put("Message", "Invalid Checksum");
+                return response;
+            }
+
+            String txnRef = params.get("vnp_TxnRef");
+            if (txnRef == null) {
+                response.put("RspCode", "99");
+                response.put("Message", "Missing transaction reference");
+                return response;
+            }
+
+            String statementIdStr = txnRef.split("_")[0];
+            Long statementId;
+            try {
+                statementId = Long.parseLong(statementIdStr);
+            } catch (NumberFormatException e) {
+                response.put("RspCode", "99");
+                response.put("Message", "Invalid transaction reference format");
+                return response;
+            }
+
+            BillingStatement statement = billingStatementRepository.findForUpdate(statementId).orElse(null);
+            if (statement == null) {
+                response.put("RspCode", "01");
+                response.put("Message", "Order not found");
+                return response;
+            }
+
+            if (statement.getStatus() == BillingStatementStatus.PAID) {
+                response.put("RspCode", "02");
+                response.put("Message", "Order already confirmed");
+                return response;
+            }
+
+            if (statement.getStatus() != BillingStatementStatus.ISSUED &&
+                    statement.getStatus() != BillingStatementStatus.OVERDUE) {
+                response.put("RspCode", "02");
+                response.put("Message", "Order already confirmed");
+                return response;
+            }
+
+            BigDecimal paidAmount = new BigDecimal(params.get("vnp_Amount"))
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+            if (paidAmount.compareTo(statement.getTotalAmount()) != 0) {
+                response.put("RspCode", "04");
+                response.put("Message", "Invalid amount");
+                return response;
+            }
+
+            if (!paymentGateway.isPaymentSuccessful(params)) {
+                log.warn("VNPay IPN payment failed for statement {}", statementId);
+                response.put("RspCode", "00");
+                response.put("Message", "Confirm Success - Transaction Failed at Gateway");
+                return response;
+            }
+
+            statement.setStatus(BillingStatementStatus.PAID);
+            statement.setPaidAt(LocalDateTime.now());
+            statement.setTransactionReference(
+                    paymentGateway.getTransactionReference(params)
+            );
+
+            invoiceRepository.bulkMarkAsPaid(statement.getStatementId(), InvoiceStatus.PAID);
+
+            log.info("VNPay IPN payment success for statement {}", statementId);
+            
+            response.put("RspCode", "00");
+            response.put("Message", "Confirm Success");
+            return response;
+
+        } catch (Exception e) {
+            log.error("Error processing VNPay IPN", e);
+            response.put("RspCode", "99");
+            response.put("Message", "Unknown error");
+            return response;
+        }
     }
 }

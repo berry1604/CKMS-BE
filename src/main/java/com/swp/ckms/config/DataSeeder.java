@@ -114,7 +114,7 @@ public class DataSeeder implements CommandLineRunner {
         Set<String> kitchenCodes = new HashSet<>(Arrays.asList(
                 "VIEW_PRODUCTION_PLAN", "EXECUTE_PRODUCTION", "UPDATE_PRODUCTION_PLAN",
                 "VIEW_KITCHEN_INVENTORY", "UPDATE_KITCHEN_INVENTORY", "ADJUST_KITCHEN_STOCK",
-                "PREPARE_SHIPMENT", "VIEW_SHIPMENT"
+                "PREPARE_SHIPMENT", "VIEW_SHIPMENT", "VIEW_PRODUCT", "VIEW_MATERIAL"
         ));
         Set<Privilege> kitchenPrivileges = allPrivileges.stream()
                 .filter(p -> kitchenCodes.contains(p.getCode()))

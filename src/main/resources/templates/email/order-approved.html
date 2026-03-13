@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { 
+            font-family: 'Segoe UI', Helvetica, Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0; 
+            padding: 40px; 
+            border-radius: 16px;
+            text-align: center;
+        }
+        .header-title { 
+            color: #2E7D32; 
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 30px;
+        }
+        .divider {
+            border-top: 1px solid #f0f0f0;
+            margin: 20px 0 40px 0;
+        }
+        .greeting {
+            font-size: 24px;
+            font-weight: bold;
+            color: #212121;
+            margin-bottom: 20px;
+        }
+        .content-text {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        .highlight {
+            color: #212121;
+            font-weight: bold;
+        }
+        .order-details {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 30px 0;
+            text-align: left;
+        }
+        .order-details th {
+            border-bottom: 2px solid #f0f0f0;
+            padding: 10px;
+            color: #2E7D32;
+        }
+        .order-details td {
+            border-bottom: 1px solid #f5f5f5;
+            padding: 10px;
+        }
+        .button { 
+            display: inline-block; 
+            padding: 15px 40px; 
+            background-color: #2E7D32; 
+            color: #ffffff !important; 
+            text-decoration: none; 
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 18px;
+            margin: 30px 0;
+        }
+        .footer { 
+            font-size: 13px; 
+            color: #9e9e9e; 
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-title">Central Kitchen Management System</div>
+        <div class="divider"></div>
+        
+        <div class="greeting">Xin chào <span class="highlight" th:text="${storeName}">Store A</span>! 👋</div>
+        
+        <div class="content-text">
+            Mừng đơn hàng <span class="highlight">#<span th:text="${orderId}">123</span></span> của bạn đã được duyệt thành công.
+        </div>
+        
+        <table class="order-details">
+            <thead>
+                <tr>
+                    <th>Sản phẩm</th>
+                    <th>Số lượng</th>
+                    <th>Đơn giá</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="item : ${items}">
+                    <td th:text="${item.productName}">Product</td>
+                    <td th:text="${item.quantity}">1</td>
+                    <td th:text="${#numbers.formatDecimal(item.unitPrice, 0, 'POINT', 0, 'COMMA')}">100.000</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="content-text">
+            Tổng cộng: <span class="highlight"><span th:text="${#numbers.formatDecimal(totalAmount, 0, 'POINT', 0, 'COMMA')}">500.000</span> VNĐ</span>
+        </div>
+        
+        <a th:href="${dashboardLink}" class="button">Xem Chi Tiết Ngay</a>
+        
+        <div class="footer">
+            Đây là email tự động từ hệ thống quản lý CKMS.<br/>
+            Nếu có thắc mắc, vui lòng liên hệ bộ phận điều phối.
+        </div>
+    </div>
+</body>
+</html>
