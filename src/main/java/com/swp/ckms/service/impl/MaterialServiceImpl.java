@@ -3,9 +3,11 @@ package com.swp.ckms.service.impl;
 import com.swp.ckms.dto.request.MaterialRequest;
 import com.swp.ckms.dto.response.MaterialResponse;
 import com.swp.ckms.entity.Material;
+import com.swp.ckms.exception.business.BusinessRuleViolationException;
 import com.swp.ckms.exception.business.DuplicateNameException;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.repository.MaterialRepository;
+import com.swp.ckms.repository.RecipeDetailRepository;
 import com.swp.ckms.service.MaterialService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -20,6 +22,7 @@ public class MaterialServiceImpl implements MaterialService {
 
     private final MaterialRepository materialRepository;
     private final com.swp.ckms.repository.RecipeRepository recipeRepository;
+    private final RecipeDetailRepository recipeDetailRepository;
 
     @Override
     public List<MaterialResponse> getAllMaterials() {
@@ -89,5 +92,31 @@ public class MaterialServiceImpl implements MaterialService {
                 .unit(material.getUnit())
                 .isActive(material.getIsActive())
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public void deleteMaterial(Long id) {
+
+        Material material = materialRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Material not found"));
+
+        if (!material.getIsActive()) {
+            return; // idempotent
+        }
+
+
+        boolean isUsed = recipeDetailRepository
+                .existsByMaterial_IdAndRecipe_IsActiveTrue(id);
+
+        if (isUsed) {
+            throw new BusinessRuleViolationException(
+                    "Cannot delete material because it is used in active recipes"
+            );
+        }
+
+
+        material.setIsActive(false);
+        materialRepository.save(material);
     }
 }

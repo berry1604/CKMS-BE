@@ -11,4 +11,5 @@ public interface MaterialRepository extends JpaRepository<Material, Long> {
     boolean existsByName(String name);
     boolean existsByNameAndIdNot(String name, Long id);
     List<Material> findByIsActiveTrue();
+
 }
