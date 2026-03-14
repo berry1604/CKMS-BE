@@ -180,7 +180,7 @@ public class DataSeeder implements CommandLineRunner {
             CentralKitchen kitchen = centralKitchenRepository.save(CentralKitchen.builder()
                     .name("Hệ thống Bếp Trung tâm")
                     .address("123 Láng Hạ, Đống Đa, Hà Nội")
-                    .maxDailyCapacity(java.math.BigDecimal.valueOf(10000))
+                    .maxDailyCapacity(java.math.BigDecimal.valueOf(300))
                     .build());
             System.out.println(">>> Seeded default Central Kitchen");
 
