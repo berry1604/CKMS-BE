@@ -20,6 +20,8 @@
         <java.version>25</java.version>
         <timefold.version>1.18.0</timefold.version>
         <lombok.version>1.18.40</lombok.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
 
     <dependencies>

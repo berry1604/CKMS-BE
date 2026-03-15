@@ -5,6 +5,10 @@ import com.swp.ckms.dto.ahamove.AhamoveOrderRequest.AhamoveItem;
 import com.swp.ckms.dto.ahamove.AhamoveOrderRequest.AhamovePoint;
 import com.swp.ckms.dto.ahamove.AhamoveOrderResponse;
 import com.swp.ckms.entity.FranchiseStore;
+import com.swp.ckms.entity.CentralKitchen;
+import com.swp.ckms.entity.OrderDetail;
+import com.swp.ckms.entity.ShipmentStop;
+import com.swp.ckms.repository.CentralKitchenRepository;
 import com.swp.ckms.entity.Shipment;
 import com.swp.ckms.entity.StoreOrder;
 import com.swp.ckms.enums.ShipmentStatus;
@@ -16,6 +20,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import com.swp.ckms.dto.ahamove.AhamoveWebhookRequest;
+import java.util.Optional;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -30,15 +40,11 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
     private final AhamoveService ahamoveService;
     private final ShipmentRepository shipmentRepository;
     private final StoreOrderRepository storeOrderRepository;
-
-    private static final String KITCHEN_ADDRESS = "Số 1, Đường ABC, Quận 1, TP.HCM";
-    private static final double KITCHEN_LAT     = 10.7769;
-    private static final double KITCHEN_LNG     = 106.7009;
-    private static final String KITCHEN_PHONE   = "84945751684";
-    private static final String KITCHEN_NAME    = "CKMS - Central Kitchen";
+    private final CentralKitchenRepository centralKitchenRepository;
 
     @Override
-    @Transactional
+//     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+@Transactional
     public void dispatchToAhamove(Shipment shipment) {
         log.info("Gửi shipment #{} lên Ahamove", shipment.getShipmentId());
 
@@ -47,10 +53,11 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
 
         // B2: Lấy danh sách orders để build items
         List<StoreOrder> orders = storeOrderRepository
-                .findByShipment_ShipmentId(shipment.getShipmentId());
+                .findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
 
         // B3: Build request từ dữ liệu Shipment
-        AhamoveOrderRequest request = buildAhamoveRequest(shipment, orders);
+        // AhamoveOrderRequest request = buildAhamoveRequest(shipment, orders, token);
+        AhamoveOrderRequest request = buildAhamoveRequest(shipment);
 
         // B4: Gọi Ahamove tạo đơn
         AhamoveOrderResponse response = ahamoveService.createOrder(token, request);
@@ -105,64 +112,161 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
         };
     }
 
+    @Override
+    @Transactional
+    public boolean handleWebhookUpdate(AhamoveWebhookRequest request) {
+        Optional<Shipment> optShipment = shipmentRepository
+                .findByAhamoveOrderId(request.getOrderId());
+        if (optShipment.isEmpty()) {
+            log.warn("Không tìm thấy shipment nào với Ahamove orderId: {}",
+                    request.getOrderId());
+            return false;
+        }
+        Shipment shipment = optShipment.get();
+        shipment.setAhamoveStatus(request.getStatus());
+        if(request.getSupplierName() != null && !request.getSupplierName().isEmpty()) {
+            shipment.setDriverName(request.getSupplierName());
+        }
+        if(request.getSupplierMobile() != null && !request.getSupplierMobile().isEmpty()) {
+            shipment.setDriverPhone(request.getSupplierMobile());
+        }
+        ShipmentStatus newStatus = mapAhamoveStatus(request.getStatus());
+
+        if (newStatus != null && newStatus != shipment.getStatus()) {
+                log.info("Shipment #{} cập nhật status: {} -> {}",
+                        shipment.getShipmentId(), shipment.getStatus(), newStatus);
+                shipment.setStatus(newStatus);
+
+                if (newStatus == ShipmentStatus.DELIVERED) {
+                shipment.setDeliveredAt(LocalDateTime.now());
+                } else if (newStatus == ShipmentStatus.CANCELLED) {
+                shipment.setCancelledAt(LocalDateTime.now());
+                }
+        }
+
+        shipmentRepository.save(shipment);
+        return true;
+    }
+
     // ==================== Private Helpers ====================
 
     /**
      * Build AhamoveOrderRequest từ dữ liệu Shipment + StoreOrders.
      * Điểm pickup = bếp trung tâm, điểm dropoff = cửa hàng.
      */
-    private AhamoveOrderRequest buildAhamoveRequest(
-            Shipment shipment, List<StoreOrder> orders) {
+    // private AhamoveOrderRequest buildAhamoveRequest(
+    //         Shipment shipment, List<StoreOrder> orders, String token) {
 
-        FranchiseStore store = shipment.getStore();
+    //     FranchiseStore store = shipment.getStore();
+    //     CentralKitchen kitchen = shipment.getProductionPlan().getKitchen();
 
-        return AhamoveOrderRequest.builder()
-                .serviceId("SGN-BIKE")
-                .paymentMethod("BALANCE")
-                .remarks("Shipment #" + shipment.getShipmentId()
-                        + " - " + store.getName())
-                .path(List.of(
-                        buildPickupPoint(shipment),
-                        buildDropoffPoint(store)
-                ))
-                .items(buildItemList(orders))
-                .build();
-    }
+    //     return AhamoveOrderRequest.builder()
+    //             // .token(token)
+    //             .serviceId(shipment.getAhamoveServiceId() != null ? shipment.getAhamoveServiceId() : "SGN-BIKE") // Mặc định là "bike" nếu không có
+    //             .orderTime(0)
+    //             .paymentMethod("BALANCE")
+    //             .requests(List.of()) // Không có yêu cầu đặc biệt nào
+    //             .remarks("Shipment #" + shipment.getShipmentId()
+    //                     + " - " + store.getName())
+    //             .path(List.of(
+    //                     buildPickupPoint(shipment, kitchen),
+    //                     buildDropoffPoint(store, kitchen)
+    //             ))
+    //             .items(buildItemList(orders))
+    //             .build();
+    // }
 
-    private AhamovePoint buildPickupPoint(Shipment shipment) {
-        return AhamovePoint.builder()
-                .address(KITCHEN_ADDRESS)
-                .lat(KITCHEN_LAT)
-                .lng(KITCHEN_LNG)
-                .name(KITCHEN_NAME)
-                .mobile(KITCHEN_PHONE)
-                .remarks("Lấy hàng - Shipment #" + shipment.getShipmentId())
-                .build();
-    }
+    // private AhamovePoint buildPickupPoint(Shipment shipment, CentralKitchen kitchen) {
+    //     return AhamovePoint.builder()
+    //             .address(kitchen.getAddress())
+    //             .lat(kitchen.getLatitude())
+    //             .lng(kitchen.getLongitude())
+    //             .name(kitchen.getName())
+    //             .mobile(kitchen.getPhone())
+    //             .remarks("Lấy hàng - Shipment #" + shipment.getShipmentId())
+    //             .build();
+    // }
 
-    private AhamovePoint buildDropoffPoint(FranchiseStore store) {
-        return AhamovePoint.builder()
-                .address(store.getAddress() != null
-                        ? store.getAddress() : "Địa chỉ cửa hàng")
-                .lat(store.getLatitude()  != null ? store.getLatitude()  : KITCHEN_LAT)
-                .lng(store.getLongitude() != null ? store.getLongitude() : KITCHEN_LNG)
+    // private AhamovePoint buildDropoffPoint(FranchiseStore store, CentralKitchen kitchen) {
+    //     return AhamovePoint.builder()
+    //             .address(store.getAddress() != null
+    //                     ? store.getAddress() : "Địa chỉ cửa hàng")
+    //             .lat(store.getLatitude()  != null ? Double.parseDouble(store.getLatitude())  : (kitchen.getLatitude()))
+    //             .lng(store.getLongitude() != null ? Double.parseDouble(store.getLongitude()) : (kitchen.getLongitude()))
+    //             .name(store.getName())
+    //             .mobile(store.getPhone() != null ? store.getPhone() : "")
+    //             .remarks("Giao hàng cho cửa hàng " + store.getName())
+    //             .build();
+    // }
+
+    // private List<AhamoveItem> buildItemList(List<StoreOrder> orders) {
+    //     return orders.stream()
+    //             .flatMap(order -> order.getOrderDetails().stream())
+    //             .map(detail -> AhamoveItem.builder()
+    //                     .id(String.valueOf(detail.getProduct().getId()))
+    //                     .name(detail.getProduct().getName())
+    //                     .num(detail.getQuantity())
+    //                     .price(detail.getProduct().getPrice() != null
+    //                             ? detail.getProduct().getPrice().intValue()
+    //                             : 0)
+    //                     .build())
+    //             .collect(Collectors.toList());
+    // }
+
+    private AhamoveOrderRequest buildAhamoveRequest(Shipment shipment) {
+    CentralKitchen kitchen = shipment.getProductionPlan().getKitchen();
+
+    // Build path: [0] = pickup (bếp), [1..n] = dropoff (các cửa hàng)
+    List<AhamovePoint> path = new ArrayList<>();
+    
+    // Điểm lấy hàng (bếp trung tâm)
+    path.add(AhamovePoint.builder()
+            .address(kitchen.getAddress())
+            .lat(kitchen.getLatitude())
+            .lng(kitchen.getLongitude())
+            .name(kitchen.getName())
+            .mobile(kitchen.getPhone())
+            .remarks("Lấy hàng - Shipment #" + shipment.getShipmentId())
+            .build());
+
+    // Các điểm giao hàng (multi-drop)
+    List<AhamoveItem> allItems = new ArrayList<>();
+    
+    for (ShipmentStop stop : shipment.getStops()) {
+        FranchiseStore store = stop.getStore();
+        
+        path.add(AhamovePoint.builder()
+                .address(store.getAddress())
+                .lat(store.getLatitude() != null ? Double.parseDouble(store.getLatitude()) : kitchen.getLatitude())
+                .lng(store.getLongitude() != null ? Double.parseDouble(store.getLongitude()) : kitchen.getLongitude())
                 .name(store.getName())
                 .mobile(store.getPhone() != null ? store.getPhone() : "")
-                .remarks("Giao hàng cho cửa hàng " + store.getName())
-                .build();
-    }
+                .remarks(stop.getRemarks() != null ? stop.getRemarks() : "Giao hàng cho " + store.getName())
+                // .trackingNumber("STOP-" + stop.getStopId()) // Để tracking từng điểm
+                .build());
 
-    private List<AhamoveItem> buildItemList(List<StoreOrder> orders) {
-        return orders.stream()
-                .flatMap(order -> order.getOrderDetails().stream())
-                .map(detail -> AhamoveItem.builder()
+        // Build items cho điểm này
+        for (StoreOrder order : stop.getStoreOrders()) {
+            for (OrderDetail detail : order.getOrderDetails()) {
+                allItems.add(AhamoveItem.builder()
                         .id(String.valueOf(detail.getProduct().getId()))
                         .name(detail.getProduct().getName())
                         .num(detail.getQuantity())
-                        .price(detail.getProduct().getPrice() != null
-                                ? detail.getProduct().getPrice().doubleValue()
-                                : 0.0)
-                        .build())
-                .collect(Collectors.toList());
+                        .price(detail.getProduct().getPrice() != null 
+                                ? detail.getProduct().getPrice().intValue() : 0)
+                        .build());
+            }
+        }
     }
+
+    return AhamoveOrderRequest.builder()
+            .serviceId(shipment.getAhamoveServiceId())
+            .orderTime(0)
+            .paymentMethod("BALANCE")
+            .path(path)
+            .items(allItems)
+            .remarks(shipment.getRemarks() != null ? shipment.getRemarks() 
+                    : "Shipment #" + shipment.getShipmentId())
+            .build();
+}
 }

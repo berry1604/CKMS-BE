@@ -52,7 +52,9 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     @Query("UPDATE StoreOrder o SET o.productionPlan = NULL, o.status = com.swp.ckms.enums.OrderStatus.APPROVED WHERE o.productionPlan.planId = :planId")
     int releaseOrdersFromPlan(@Param("planId") Long planId);
 
-    List<StoreOrder> findByShipment_ShipmentId(Long shipmentId);
+    // List<StoreOrder> findByShipment_ShipmentId(Long shipmentId);
+    // List<StoreOrder> findByShipmentStop_ShipmentStopId(Long shipmentStopId);
+    List<StoreOrder> findByShipmentStop_Shipment_ShipmentId(Long shipmentId);
 
     @Query("SELECT SUM(od.quantity) FROM StoreOrder o JOIN o.orderDetails od WHERE o.orderId IN :orderIds")
     java.math.BigDecimal sumQuantityByOrderIds(@Param("orderIds") List<Long> orderIds);

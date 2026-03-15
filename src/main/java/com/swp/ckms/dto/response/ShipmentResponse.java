@@ -28,7 +28,7 @@ public class ShipmentResponse {
     private String driverPhone;
     private String vehicleInfo;
     private BigDecimal shippingFee;
-    private String note;
+    private String remarks;
     private Long createdByUserId;
     private String createdByUsername;
     private Long confirmedByUserId;

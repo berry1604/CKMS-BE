@@ -2,6 +2,7 @@ package com.swp.ckms.service;
 
 import com.swp.ckms.entity.Shipment;
 import com.swp.ckms.enums.ShipmentStatus;
+import com.swp.ckms.dto.ahamove.AhamoveWebhookRequest;
 
 public interface AhamoveShipmentService {
 
@@ -24,4 +25,6 @@ public interface AhamoveShipmentService {
      * Trả về null nếu không map được (status không xác định).
      */
     ShipmentStatus mapAhamoveStatus(String ahamoveStatus);
+    //Xử lý webhook update
+    boolean handleWebhookUpdate(AhamoveWebhookRequest request);
 }

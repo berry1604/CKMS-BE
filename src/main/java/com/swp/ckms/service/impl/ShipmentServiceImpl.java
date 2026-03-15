@@ -3,6 +3,8 @@ package com.swp.ckms.service.impl;
 import com.swp.ckms.dto.request.ConfirmDeliveryRequest;
 import com.swp.ckms.dto.request.CreateShipmentRequest;
 import com.swp.ckms.dto.response.ShipmentResponse;
+import com.swp.ckms.dto.request.CreateShipmentRequest.DropPointRequest;
+import com.swp.ckms.enums.ProductionPlanStatus;
 import com.swp.ckms.entity.*;
 import com.swp.ckms.enums.OrderStatus;
 import com.swp.ckms.enums.ShipmentStatus;
@@ -20,7 +22,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.swp.ckms.service.AhamoveShipmentService;
+import java.util.ArrayList;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -47,6 +50,79 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final AllocationItemRepository allocationItemRepository;
     private final com.swp.ckms.service.NotificationService notificationService;
     private final com.swp.ckms.util.RecipientResolver recipientResolver;
+    private final ShipmentStopRepository shipmentStopRepository;
+    
+
+    // @Override
+    // public ShipmentResponse createShipment(CreateShipmentRequest request) {
+    //     UserContext ctx = SecurityUtils.getCurrentUserContext();
+    //     if (ctx == null) throw new AccessDeniedException("Unauthorized");
+
+    //     User currentUser = userRepository.findById(ctx.getUserId())
+    //             .orElseThrow(() -> new AccessDeniedException("User not found"));
+
+    //     // Validate production plan if provided
+    //     ProductionPlan plan = null;
+    //     if (request.getProductionPlanId() != null) {
+    //         plan = productionPlanRepository.findById(request.getProductionPlanId())
+    //                 .orElseThrow(() -> new ResourceNotFoundException("Production Plan not found: " + request.getProductionPlanId()));
+
+    //         if (plan.getStatus() != com.swp.ckms.enums.ProductionPlanStatus.FINISHED) {
+    //             throw new IllegalStateException("Production Plan must be FINISHED before creating shipment. Current: " + plan.getStatus());
+    //         }
+    //     }
+
+    //     // Validate store
+    //     FranchiseStore store = franchiseStoreRepository.findById(request.getStoreId())
+    //             .orElseThrow(() -> new ResourceNotFoundException("Store not found: " + request.getStoreId()));
+
+    //     // Validate and fetch store orders
+    //     List<StoreOrder> orders = storeOrderRepository.findAllById(request.getStoreOrderIds());
+
+    //     if (orders.size() != request.getStoreOrderIds().size()) {
+    //         throw new ResourceNotFoundException("Some store orders not found");
+    //     }
+
+    //     // Validate all orders belong to the same store and are in READY status
+    //     for (StoreOrder order : orders) {
+    //         if (!order.getStore().getStoreId().equals(store.getStoreId())) {
+    //             throw new IllegalArgumentException("Order #" + order.getOrderId() + " does not belong to store #" + store.getStoreId());
+    //         }
+    //         if (order.getStatus() != OrderStatus.READY) {
+    //             throw new IllegalStateException("Order #" + order.getOrderId() + " is not in READY status. Current: " + order.getStatus());
+    //         }
+    //         if (order.getShipment() != null) {
+    //             throw new IllegalStateException("Order #" + order.getOrderId() + " is already assigned to shipment #" + order.getShipment().getShipmentId());
+    //         }
+    //     }
+
+    //     // Create shipment
+    //     Shipment shipment = Shipment.builder()
+    //             .store(store)
+    //             .productionPlan(plan)
+    //             .driverName(request.getDriverName())
+    //             .driverPhone(request.getDriverPhone())
+    //             .vehicleInfo(request.getVehicleInfo())
+    //             .shippingFee(request.getShippingFee())
+    //             .status(ShipmentStatus.PENDING)
+    //             .note(request.getNote())
+    //             .createdBy(currentUser)
+    //             .build();
+
+    //     Shipment savedShipment = shipmentRepository.save(shipment);
+
+    //     // Assign orders to shipment
+    //     for (StoreOrder order : orders) {
+    //         order.setShipment(savedShipment);
+    //         order.setStatus(OrderStatus.SHIPPING);
+    //     }
+    //     storeOrderRepository.saveAll(orders);
+
+    //     log.info("Shipment #{} created for store {} with {} orders",
+    //             savedShipment.getShipmentId(), store.getName(), orders.size());
+
+    //     return mapToResponse(savedShipment, orders);
+    // }
 
     @Override
     public ShipmentResponse createShipment(CreateShipmentRequest request) {
@@ -56,67 +132,75 @@ public class ShipmentServiceImpl implements ShipmentService {
         User currentUser = userRepository.findById(ctx.getUserId())
                 .orElseThrow(() -> new AccessDeniedException("User not found"));
 
-        // Validate production plan if provided
-        ProductionPlan plan = null;
-        if (request.getProductionPlanId() != null) {
-            plan = productionPlanRepository.findById(request.getProductionPlanId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Production Plan not found: " + request.getProductionPlanId()));
+        // Validate production plan
+        ProductionPlan plan = productionPlanRepository.findById(request.getProductionPlanId())
+                .orElseThrow(() -> new ResourceNotFoundException("Production Plan not found"));
 
-            if (plan.getStatus() != com.swp.ckms.enums.ProductionPlanStatus.FINISHED) {
-                throw new IllegalStateException("Production Plan must be FINISHED before creating shipment. Current: " + plan.getStatus());
-            }
+        if (plan.getStatus() != ProductionPlanStatus.FINISHED) {
+            throw new IllegalStateException("Production Plan must be FINISHED to create shipment");
         }
 
-        // Validate store
-        FranchiseStore store = franchiseStoreRepository.findById(request.getStoreId())
-                .orElseThrow(() -> new ResourceNotFoundException("Store not found: " + request.getStoreId()));
+        CreateShipmentRequest.DropPointRequest firstDrop = request.getDropPoints().get(0);
+        FranchiseStore primaryStore = franchiseStoreRepository.findById(firstDrop.getStoreId())
+        .orElseThrow(() -> new ResourceNotFoundException("Store not found: " + firstDrop.getStoreId()));
 
-        // Validate and fetch store orders
-        List<StoreOrder> orders = storeOrderRepository.findAllById(request.getStoreOrderIds());
-
-        if (orders.size() != request.getStoreOrderIds().size()) {
-            throw new ResourceNotFoundException("Some store orders not found");
-        }
-
-        // Validate all orders belong to the same store and are in READY status
-        for (StoreOrder order : orders) {
-            if (!order.getStore().getStoreId().equals(store.getStoreId())) {
-                throw new IllegalArgumentException("Order #" + order.getOrderId() + " does not belong to store #" + store.getStoreId());
-            }
-            if (order.getStatus() != OrderStatus.READY) {
-                throw new IllegalStateException("Order #" + order.getOrderId() + " is not in READY status. Current: " + order.getStatus());
-            }
-            if (order.getShipment() != null) {
-                throw new IllegalStateException("Order #" + order.getOrderId() + " is already assigned to shipment #" + order.getShipment().getShipmentId());
-            }
-        }
-
-        // Create shipment
+        // Create shipment (không có store, fee, driver - sẽ từ AhaMove)
         Shipment shipment = Shipment.builder()
-                .store(store)
+                .store(primaryStore) 
                 .productionPlan(plan)
-                .driverName(request.getDriverName())
-                .driverPhone(request.getDriverPhone())
-                .vehicleInfo(request.getVehicleInfo())
-                .shippingFee(request.getShippingFee())
+                .ahamoveServiceId(request.getAhamoveServiceId())
                 .status(ShipmentStatus.PENDING)
-                .note(request.getNote())
+                .remarks(request.getRemarks())
                 .createdBy(currentUser)
                 .build();
 
         Shipment savedShipment = shipmentRepository.save(shipment);
 
-        // Assign orders to shipment
-        for (StoreOrder order : orders) {
-            order.setShipment(savedShipment);
-            order.setStatus(OrderStatus.SHIPPING);
+        // Create stops (multi-drop points)
+        List<ShipmentStop> stops = new ArrayList<>();
+        int stopOrder = 1;
+
+        for (DropPointRequest dropPoint : request.getDropPoints()) {
+            FranchiseStore store = franchiseStoreRepository.findById(dropPoint.getStoreId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Store not found: " + dropPoint.getStoreId()));
+
+            ShipmentStop stop = ShipmentStop.builder()
+                    .shipment(savedShipment)
+                    .store(store)
+                    .stopOrder(stopOrder++)
+                    .remarks(dropPoint.getRemarks())
+                    .build();
+
+            ShipmentStop savedStop = shipmentStopRepository.save(stop);
+
+            // Validate and assign orders to this stop
+            List<StoreOrder> orders = storeOrderRepository.findAllById(dropPoint.getStoreOrderIds());
+            
+            for (StoreOrder order : orders) {
+                if (!order.getStore().getStoreId().equals(store.getStoreId())) {
+                    throw new IllegalArgumentException("Order #" + order.getOrderId() 
+                            + " does not belong to store #" + store.getStoreId());
+                }
+                if (order.getStatus() != OrderStatus.READY) {
+                    throw new IllegalStateException("Order #" + order.getOrderId() + " is not READY");
+                }
+                if (order.getShipmentStop() != null) {
+                    throw new IllegalStateException("Order #" + order.getOrderId() + " already assigned to a shipment");
+                }
+                
+                order.setShipmentStop(savedStop);
+                order.setStatus(OrderStatus.IN_TRANSIT);
+            }
+            storeOrderRepository.saveAll(orders);
+            stops.add(savedStop);
         }
-        storeOrderRepository.saveAll(orders);
 
-        log.info("Shipment #{} created for store {} with {} orders",
-                savedShipment.getShipmentId(), store.getName(), orders.size());
+        savedShipment.setStops(stops);
 
-        return mapToResponse(savedShipment, orders);
+        log.info("Shipment #{} created with {} drop points", 
+                savedShipment.getShipmentId(), stops.size());
+
+        return mapToResponse(savedShipment);
     }
 
     @Override
@@ -175,12 +259,12 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         // --- TRIGGER NOTIFICATION ---
         try {
-            String recipient = recipientResolver.resolveStoreManagerEmail(shipment.getStore().getStoreId(), 
+            String recipient = recipientResolver.resolveStoreManagerEmail(resolvePrimaryStore(shipment).getStoreId(), 
                     shipment.getCreatedBy() != null ? shipment.getCreatedBy().getUserId() : null);
             if (recipient != null) {
                 java.util.Map<String, Object> payload = new java.util.HashMap<>();
                 payload.put("shipmentId", shipment.getShipmentId());
-                payload.put("storeName", shipment.getStore().getName());
+                payload.put("storeName", resolvePrimaryStore(shipment).getName());
                 payload.put("driverName", shipment.getDriverName());
                 payload.put("driverPhone", shipment.getDriverPhone());
                 payload.put("vehicleInfo", shipment.getVehicleInfo());
@@ -220,7 +304,7 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         // Store staff can only confirm their own store's shipment
         if ("STORE".equalsIgnoreCase(ctx.getScope())) {
-            if (!shipment.getStore().getStoreId().equals(ctx.getStoreId())) {
+            if (!resolvePrimaryStore(shipment).getStoreId().equals(ctx.getStoreId())) {
                 throw new AccessDeniedException("You can only confirm deliveries for your own store");
             }
         }
@@ -231,17 +315,17 @@ public class ShipmentServiceImpl implements ShipmentService {
         shipment.setConfirmedBy(currentUser);
 
         if (request != null && request.getFeedbackNote() != null) {
-            shipment.setNote(shipment.getNote() != null
-                    ? shipment.getNote() + " | Feedback: " + request.getFeedbackNote()
+            shipment.setRemarks(shipment.getRemarks() != null
+                    ? shipment.getRemarks() + " | Feedback: " + request.getFeedbackNote()
                     : "Feedback: " + request.getFeedbackNote());
         }
 
         shipmentRepository.save(shipment);
 
-        // Update all store orders to COMPLETED
-        List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipmentId);
+        // Update all store orders to DELIVERED
+        List<StoreOrder> orders = storeOrderRepository.findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
         for (StoreOrder order : orders) {
-            order.setStatus(OrderStatus.COMPLETED);
+            order.setStatus(OrderStatus.DELIVERED);
         }
         storeOrderRepository.saveAll(orders);
 
@@ -264,17 +348,18 @@ public class ShipmentServiceImpl implements ShipmentService {
         // Hủy đơn trên AhaMove nếu đã tạo
         ahamoveShipmentService.cancelAhamoveOrder(shipment, reason); 
         // Release orders back to READY
-        List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipmentId);
+        List<StoreOrder> orders = storeOrderRepository.findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
         for (StoreOrder order : orders) {
-            order.setShipment(null);
+
+            order.setShipmentStop(null);
             order.setStatus(OrderStatus.READY);
         }
         storeOrderRepository.saveAll(orders);
 
         shipment.setStatus(ShipmentStatus.CANCELLED);
         shipment.setCancelledAt(LocalDateTime.now());
-        shipment.setNote(shipment.getNote() != null
-                ? shipment.getNote() + " | Cancel reason: " + reason
+        shipment.setRemarks(shipment.getRemarks() != null
+                ? shipment.getRemarks() + " | Cancel reason: " + reason
                 : "Cancel reason: " + reason);
         shipmentRepository.save(shipment);
 
@@ -336,15 +421,15 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     private ShipmentResponse mapToResponse(Shipment shipment) {
-        List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipment.getShipmentId());
+        List<StoreOrder> orders = storeOrderRepository.findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
         return mapToResponse(shipment, orders);
     }
 
     private ShipmentResponse mapToResponse(Shipment shipment, List<StoreOrder> orders) {
         return ShipmentResponse.builder()
                 .shipmentId(shipment.getShipmentId())
-                .storeId(shipment.getStore().getStoreId())
-                .storeName(shipment.getStore().getName())
+                .storeId(resolvePrimaryStore(shipment).getStoreId())
+                .storeName(resolvePrimaryStore(shipment).getName())
                 .productionPlanId(shipment.getProductionPlan() != null ? shipment.getProductionPlan().getPlanId() : null)
                 .status(shipment.getStatus().name())
                 .ahamoveOrderId(shipment.getAhamoveOrderId())
@@ -354,7 +439,8 @@ public class ShipmentServiceImpl implements ShipmentService {
                 .driverPhone(shipment.getDriverPhone())
                 .vehicleInfo(shipment.getVehicleInfo())
                 .shippingFee(shipment.getShippingFee())
-                .note(shipment.getNote())
+                // .note(shipment.getNote())
+                .remarks(shipment.getRemarks())
                 .createdByUserId(shipment.getCreatedBy() != null ? shipment.getCreatedBy().getUserId() : null)
                 .createdByUsername(shipment.getCreatedBy() != null ? shipment.getCreatedBy().getUsername() : null)
                 .confirmedByUserId(shipment.getConfirmedBy() != null ? shipment.getConfirmedBy().getUserId() : null)
@@ -370,7 +456,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         log.info("Starting FIFO sourcing for shipment #{}", shipment.getShipmentId());
 
         // 1. Aggregate Demand
-        List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipment.getShipmentId());
+        List<StoreOrder> orders = storeOrderRepository.findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
         java.util.Map<Long, java.math.BigDecimal> productDemands = new java.util.HashMap<>();
 
         for (StoreOrder order : orders) {
@@ -438,10 +524,10 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     private void confirmAndTransferStock(Shipment shipment) {
-        log.info("Transferring sourced stock to store #{} for shipment #{}", shipment.getStore().getStoreId(), shipment.getShipmentId());
+        log.info("Transferring sourced stock to store #{} for shipment #{}", resolvePrimaryStore(shipment).getStoreId(), shipment.getShipmentId());
 
-        StoreWarehouse storeWarehouse = storeWarehouseRepository.findByStore_StoreId(shipment.getStore().getStoreId())
-                .orElseThrow(() -> new ResourceNotFoundException("Warehouse not found for store ID: " + shipment.getStore().getStoreId()));
+        StoreWarehouse storeWarehouse = storeWarehouseRepository.findByStore_StoreId(resolvePrimaryStore(shipment).getStoreId())
+                .orElseThrow(() -> new ResourceNotFoundException("Warehouse not found for store ID: " + resolvePrimaryStore(shipment).getStoreId()));
 
         List<ShipmentSourcingRecord> records = shipmentSourcingRecordRepository.findByShipment_ShipmentId(shipment.getShipmentId());
 
@@ -471,7 +557,7 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         // --- UPDATE INVOICE STATUS ---
-        List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipment.getShipmentId());
+        List<StoreOrder> orders = storeOrderRepository.findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
         for (StoreOrder order : orders) {
             if (order.getInvoice() != null) {
                 Invoice invoice = order.getInvoice();
@@ -479,5 +565,12 @@ public class ShipmentServiceImpl implements ShipmentService {
                 invoiceRepository.save(invoice);
             }
         }
+    }
+    private FranchiseStore resolvePrimaryStore(Shipment shipment) {
+        if (shipment.getStore() != null) return shipment.getStore();
+        if (shipment.getStops() != null && !shipment.getStops().isEmpty()) {
+            return shipment.getStops().get(0).getStore();
+        }
+        return null;
     }
 }

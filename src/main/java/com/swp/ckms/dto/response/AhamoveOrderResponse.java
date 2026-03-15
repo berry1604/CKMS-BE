@@ -2,6 +2,7 @@ package com.swp.ckms.dto.ahamove;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 @Data
 public class AhamoveOrderResponse {
@@ -15,19 +16,40 @@ public class AhamoveOrderResponse {
     private String sharedLink;
 
     // Phí vận chuyển tính được
-    @JsonProperty("total_pay")
-    private double totalPay;
+   private String status;
 
-    // Trạng thái ban đầu
-    private String status;
+    // Nested order detail
+    private OrderDetail order;
 
-    // Thông tin tài xế (nếu đã assign)
-    @JsonProperty("supplier_id")
-    private String supplierId;
+    // Top-level total_pay luôn = 0, phí thực nằm trong order.total_fee
+    public double getTotalPay() {
+        return order != null ? order.totalFee : 0;
+    }
 
-    // Khoảng cách ước tính (km)
-    private double distance;
+    public double getDistance() {
+        return order != null ? order.distance : 0;
+    }
 
-    // Thời gian ước tính (giây)
-    private int duration;
+    public int getDuration() {
+        return order != null ? order.duration : 0;
+    }
+
+    public String getSupplierId() {
+        return order != null ? order.supplierId : null;
+    }
+        @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class OrderDetail {
+        @JsonProperty("total_fee")
+        private double totalFee;
+
+        @JsonProperty("total_pay")
+        private double totalPay;
+
+        private double distance;
+        private int duration;
+
+        @JsonProperty("supplier_id")
+        private String supplierId;
+    }
 }

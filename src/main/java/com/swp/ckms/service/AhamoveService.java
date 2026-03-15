@@ -28,5 +28,5 @@ public interface AhamoveService {
      * Lấy thông tin chi tiết đơn hàng từ AhaMove.
      * Dùng để polling trạng thái khi webhook không đến.
      */
-    AhamoveOrderResponse getOrderDetails(String token, String ahamoveOrderId);
+    AhamoveOrderResponse getOrderDetail(String token, String ahamoveOrderId);
 }
