@@ -100,7 +100,7 @@ public class DataSeeder implements CommandLineRunner {
         Set<String> coordinatorCodes = new HashSet<>(Arrays.asList(
                 "VIEW_STORE_ORDER", "APPROVE_STORE_ORDER", "UPDATE_STORE_ORDER",
                 "ORGANIZE_PRODUCTION", "CREATE_PRODUCTION_PLAN", "VIEW_PRODUCTION_PLAN", "UPDATE_PRODUCTION_PLAN",
-                "CREATE_SHIPMENT", "START_SHIPMENT", "CANCEL_SHIPMENT", "VIEW_SHIPMENT",
+                "CREATE_SHIPMENT", "START_SHIPMENT", "CANCEL_SHIPMENT", "VIEW_SHIPMENT", "PREPARE_SHIPMENT",
                 "VIEW_INVOICE", "VIEW_BILLING", "VIEW_KITCHEN_INVENTORY", "VIEW_DASHBOARD",
                 "VIEW_RECIPE", "PAY_BILLING", "CONFIRM_PAYMENT"
         ));
