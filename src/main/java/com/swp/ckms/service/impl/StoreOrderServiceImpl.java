@@ -76,25 +76,25 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .batchId(null)
                 .build();
 
-        // BR-01: Check Warehouse Capacity
-        StoreWarehouse warehouse = storeWarehouseRepository.findByStore_StoreId(store.getStoreId())
-                .orElse(null); // If no warehouse, we might skip or fail. SRS says receiving updates warehouse, so it should exist.
-
-        if (warehouse != null && warehouse.getMaxCapacity() != null) {
-            BigDecimal currentQty = storeStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
-            if (currentQty == null) currentQty = BigDecimal.ZERO;
-
-            double newOrderQty = request.getItems().stream()
-                    .map(OrderItemRequest::getQuantity)
-                    .mapToInt(Integer::intValue)
-                    .sum();
-
-            if (currentQty.add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
-                throw new BusinessRuleViolationException(String.format(
-                        "Đơn hàng vượt quá sức chứa của kho. (Tối đa: %s, Hiện tại: %s, Đặt thêm: %s)",
-                        warehouse.getMaxCapacity(), currentQty, newOrderQty));
-            }
-        }
+//        // BR-01: Check Warehouse Capacity
+//        StoreWarehouse warehouse = storeWarehouseRepository.findByStore_StoreId(store.getStoreId())
+//                .orElse(null); // If no warehouse, we might skip or fail. SRS says receiving updates warehouse, so it should exist.
+//
+//        if (warehouse != null && warehouse.getMaxCapacity() != null) {
+//            BigDecimal currentQty = storeStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
+//            if (currentQty == null) currentQty = BigDecimal.ZERO;
+//
+//            double newOrderQty = request.getItems().stream()
+//                    .map(OrderItemRequest::getQuantity)
+//                    .mapToInt(Integer::intValue)
+//                    .sum();
+//
+//            if (currentQty.add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
+//                throw new BusinessRuleViolationException(String.format(
+//                        "Đơn hàng vượt quá sức chứa của kho. (Tối đa: %s, Hiện tại: %s, Đặt thêm: %s)",
+//                        warehouse.getMaxCapacity(), currentQty, newOrderQty));
+//            }
+//        }
 
         List<Long> productIds = request.getItems().stream()
                 .map(OrderItemRequest::getProductId)
@@ -215,22 +215,22 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             throw new org.springframework.security.access.AccessDeniedException("You can only modify orders of your own store");
         }
 
-        // BR-01: Re-check Warehouse Capacity
-        FranchiseStore store = order.getStore();
-        StoreWarehouse warehouse = storeWarehouseRepository.findByStore_StoreId(store.getStoreId())
-                .orElse(null);
-
-        if (warehouse != null && warehouse.getMaxCapacity() != null) {
-            BigDecimal currentQty = storeStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
-            if (currentQty == null) currentQty = BigDecimal.ZERO;
-
-            int oldOrderQty = order.getOrderDetails().stream().mapToInt(com.swp.ckms.entity.OrderDetail::getQuantity).sum();
-            int newOrderQty = request.getItems().stream().mapToInt(com.swp.ckms.dto.request.OrderItemRequest::getQuantity).sum();
-
-            if (currentQty.subtract(BigDecimal.valueOf(oldOrderQty)).add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
-                throw new BusinessRuleViolationException("Updated order exceeds warehouse capacity.");
-            }
-        }
+//        // BR-01: Re-check Warehouse Capacity
+//        FranchiseStore store = order.getStore();
+//        StoreWarehouse warehouse = storeWarehouseRepository.findByStore_StoreId(store.getStoreId())
+//                .orElse(null);
+//
+//        if (warehouse != null && warehouse.getMaxCapacity() != null) {
+//            BigDecimal currentQty = storeStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
+//            if (currentQty == null) currentQty = BigDecimal.ZERO;
+//
+//            int oldOrderQty = order.getOrderDetails().stream().mapToInt(com.swp.ckms.entity.OrderDetail::getQuantity).sum();
+//            int newOrderQty = request.getItems().stream().mapToInt(com.swp.ckms.dto.request.OrderItemRequest::getQuantity).sum();
+//
+//            if (currentQty.subtract(BigDecimal.valueOf(oldOrderQty)).add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
+//                throw new BusinessRuleViolationException("Updated order exceeds warehouse capacity.");
+//            }
+//        }
 
         // Update details
         order.getOrderDetails().clear();
