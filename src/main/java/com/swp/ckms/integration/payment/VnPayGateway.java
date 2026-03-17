@@ -33,7 +33,7 @@ public class VnPayGateway implements PaymentGateway {
 
             String txnRef = referenceId + "_" + System.currentTimeMillis();
             
-            // Fix Timezone chuẩn của VNPay GMT+7
+            // Timezone VNPay GMT+7
             TimeZone tz = TimeZone.getTimeZone("Asia/Ho_Chi_Minh");
 
             Calendar cld = Calendar.getInstance(tz);
