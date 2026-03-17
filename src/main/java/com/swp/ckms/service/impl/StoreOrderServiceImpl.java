@@ -393,6 +393,8 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .status(order.getStatus().name())
                 .batchId(order.getBatchId())
                 .totalAmount(order.getTotalAmount())
+                .deliveryDate(order.getDeliveryDate())
+                .storeName(order.getStore() != null ? order.getStore().getName() : null)
                 .orderDetails(detailResponses)
                 .build();
     }

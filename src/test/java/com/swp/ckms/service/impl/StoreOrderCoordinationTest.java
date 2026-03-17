@@ -121,6 +121,8 @@ class StoreOrderCoordinationTest {
 
         assertNotNull(response);
         assertEquals(newDate, order.getDeliveryDate());
+        assertEquals(newDate, response.getDeliveryDate());
+        assertEquals("Test Store", response.getStoreName());
         verify(storeOrderRepository).save(order);
         mockedSecurityUtils.close();
     }

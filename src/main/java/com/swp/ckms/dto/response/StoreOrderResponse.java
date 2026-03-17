@@ -21,5 +21,7 @@ public class StoreOrderResponse {
     private String status;
     private Long batchId;
     private BigDecimal totalAmount;
+    private java.time.LocalDate deliveryDate;
+    private String storeName;
     private List<OrderDetailResponse> orderDetails;
 }
