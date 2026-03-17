@@ -23,7 +23,4 @@ public class StoreCreateRequest {
 
     private String paymentCycle; // e.g., "MONTHLY"
 
-    //@NotNull(message = "Sức chứa kho không được để trống")
-    @PositiveOrZero(message = "Sức chứa kho phải là số dương hoặc bằng 0")
-    private BigDecimal warehouseCapacity;
 }

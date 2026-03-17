@@ -19,6 +19,4 @@ public class StoreUpdateRequest {
 
     private String paymentCycle;
 
-    @PositiveOrZero(message = "Sức chứa kho phải >= 0")
-    private BigDecimal warehouseCapacity;
 }

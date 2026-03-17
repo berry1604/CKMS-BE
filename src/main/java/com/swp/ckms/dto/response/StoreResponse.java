@@ -17,5 +17,4 @@ public class StoreResponse {
     private String address;
     private String paymentCycle;
     private Long warehouseId;
-    private BigDecimal warehouseCapacity;
 }

@@ -42,11 +42,9 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
 
         FranchiseStore savedStore = Objects.requireNonNull(storeRepository.save(store), "Saved store cannot be null");
 
-        // 2. Automatically create StoreWarehouse
         StoreWarehouse warehouse = StoreWarehouse.builder()
                 .name("Kho - " + savedStore.getName())
                 .store(savedStore)
-                .maxCapacity(request.getWarehouseCapacity())
                 .build();
 
         StoreWarehouse savedWarehouse = Objects.requireNonNull(warehouseRepository.save(warehouse), "Saved warehouse cannot be null");
@@ -61,7 +59,6 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
                 .address(store.getAddress())
                 .paymentCycle(store.getPaymentCycle())
                 .warehouseId(warehouse.getWarehouseId())
-                .warehouseCapacity(warehouse.getMaxCapacity())
                 .build();
     }
 
@@ -137,15 +134,6 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
         StoreWarehouse warehouse = warehouseRepository
                 .findByStore_StoreId(updatedStore.getStoreId())
                 .orElseThrow(() -> new RuntimeException("Warehouse not found"));
-
-        //Nếu capacity thay đổi thì cập nhật
-        if (request.getWarehouseCapacity() != null &&
-                (warehouse.getMaxCapacity() == null ||
-                        warehouse.getMaxCapacity().compareTo(request.getWarehouseCapacity()) != 0)) {
-
-            warehouse.setMaxCapacity(request.getWarehouseCapacity());
-            warehouseRepository.save(warehouse);
-        }
 
         return mapToResponse(updatedStore, warehouse);
     }
