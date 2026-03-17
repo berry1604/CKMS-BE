@@ -27,8 +27,8 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     List<StoreOrder> findByProductionPlan_PlanId(Long planId);
 
     @Modifying
-    @Query("UPDATE StoreOrder o SET o.productionPlan.planId = :planId, o.status = com.swp.ckms.enums.OrderStatus.SCHEDULED WHERE o.orderId IN :orderIds AND o.productionPlan IS NULL AND o.status = com.swp.ckms.enums.OrderStatus.APPROVED")
-    int assignOrdersToPlan(@Param("planId") Long planId, @Param("orderIds") List<Long> orderIds);
+    @Query("UPDATE StoreOrder o SET o.productionPlan = :plan, o.status = com.swp.ckms.enums.OrderStatus.SCHEDULED WHERE o.orderId IN :orderIds AND o.productionPlan IS NULL AND (o.status = com.swp.ckms.enums.OrderStatus.APPROVED OR o.status = com.swp.ckms.enums.OrderStatus.CONFIRMED)")
+    int assignOrdersToPlan(@Param("plan") com.swp.ckms.entity.ProductionPlan plan, @Param("orderIds") List<Long> orderIds);
 
     @Query("""
         SELECT 
@@ -80,6 +80,19 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
         )
     """)
     java.math.BigDecimal sumQuantityByKitchenAndDeliveryDate(
+            @Param("kitchenId") Long kitchenId, 
+            @Param("deliveryDate") java.time.LocalDate deliveryDate);
+
+    @Query("""
+        SELECT o FROM StoreOrder o 
+        LEFT JOIN o.approvedByUser u
+        WHERE (u.kitchen.kitchenId = :kitchenId)
+        AND o.deliveryDate = :deliveryDate
+        AND o.status = com.swp.ckms.enums.OrderStatus.APPROVED
+        AND o.productionPlan IS NULL
+        ORDER BY o.deliveryDate ASC, o.totalAmount DESC, o.orderDate ASC
+    """)
+    List<StoreOrder> findUnassignedApprovedOrders(
             @Param("kitchenId") Long kitchenId, 
             @Param("deliveryDate") java.time.LocalDate deliveryDate);
 }

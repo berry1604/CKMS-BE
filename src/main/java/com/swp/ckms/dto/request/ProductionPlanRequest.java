@@ -14,8 +14,6 @@ import java.util.List;
 @AllArgsConstructor
 public class ProductionPlanRequest {
 
-    @NotNull(message = "Store order IDs list cannot be null")
-    @NotNull(message = "Store order IDs list cannot be empty")
     private List<Long> storeOrderIds;
 
     @NotNull(message = "Ngày kế hoạch không được để trống")

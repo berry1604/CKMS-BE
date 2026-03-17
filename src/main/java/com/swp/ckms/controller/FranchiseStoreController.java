@@ -31,7 +31,7 @@ public class FranchiseStoreController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('MANAGE_STORES')")
+    @PreAuthorize("hasAnyAuthority('MANAGE_STORES','ORGANIZE_PRODUCTION')")
     public ResponseEntity<ApiResponse<StoreResponse>> getStore(
             @PathVariable Long id
     ) {
@@ -44,7 +44,7 @@ public class FranchiseStoreController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('MANAGE_STORES')")
+    @PreAuthorize("hasAnyAuthority('MANAGE_STORES','ORGANIZE_PRODUCTION')")
     public ResponseEntity<ApiResponse<Page<StoreResponse>>> getAllStores(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
