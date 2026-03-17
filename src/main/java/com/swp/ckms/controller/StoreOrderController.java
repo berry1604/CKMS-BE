@@ -119,5 +119,26 @@ public class StoreOrderController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{id}/reschedule")
+    @PreAuthorize("hasAuthority('APPROVE_STORE_ORDER')")
+    public ResponseEntity<StoreOrderResponse> rescheduleOrder(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, String> body) {
+        String dateStr = body.get("deliveryDate");
+        if (dateStr == null) {
+            throw new IllegalArgumentException("deliveryDate is required");
+        }
+        java.time.LocalDate newDate = java.time.LocalDate.parse(dateStr);
+        StoreOrderResponse response = storeOrderService.rescheduleOrder(id, newDate);
+        return ResponseEntity.ok(response);
+    }
 
+    @PostMapping("/{id}/split")
+    @PreAuthorize("hasAuthority('APPROVE_STORE_ORDER')")
+    public ResponseEntity<java.util.List<StoreOrderResponse>> splitOrder(
+            @PathVariable Long id,
+            @RequestBody @Valid java.util.List<com.swp.ckms.dto.request.OrderItemRequest> itemsToSplit) {
+        java.util.List<StoreOrderResponse> response = storeOrderService.splitOrder(id, itemsToSplit);
+        return ResponseEntity.ok(response);
+    }
 }

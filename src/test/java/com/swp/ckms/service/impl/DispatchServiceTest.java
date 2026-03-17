@@ -1,8 +1,20 @@
 package com.swp.ckms.service.impl;
 
 import com.swp.ckms.dto.response.DispatchSuggestionResponse;
-import com.swp.ckms.entity.*;
-import com.swp.ckms.repository.*;
+import com.swp.ckms.entity.CentralKitchen;
+import com.swp.ckms.entity.FranchiseStore;
+import com.swp.ckms.entity.KitchenWarehouse;
+import com.swp.ckms.entity.Material;
+import com.swp.ckms.entity.OrderDetail;
+import com.swp.ckms.entity.Product;
+import com.swp.ckms.entity.Recipe;
+import com.swp.ckms.entity.RecipeDetail;
+import com.swp.ckms.entity.StoreOrder;
+import com.swp.ckms.repository.CentralKitchenRepository;
+import com.swp.ckms.repository.KitchenStockItemRepository;
+import com.swp.ckms.repository.KitchenWarehouseRepository;
+import com.swp.ckms.repository.RecipeRepository;
+import com.swp.ckms.repository.StoreOrderRepository;
 import com.swp.ckms.repository.projection.MaterialStockProjection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
