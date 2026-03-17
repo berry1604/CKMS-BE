@@ -16,5 +16,6 @@ public interface StoreOrderService {
     StoreOrderResponse updateOrder(Long id, StoreOrderRequest request, String username);
     void cancelOrder(Long id, String username);
     StoreOrderResponse submitOrder(Long id, String username);
-
+    StoreOrderResponse rescheduleOrder(Long id, java.time.LocalDate newDeliveryDate);
+    java.util.List<StoreOrderResponse> splitOrder(Long id, java.util.List<com.swp.ckms.dto.request.OrderItemRequest> itemsToSplit);
 }

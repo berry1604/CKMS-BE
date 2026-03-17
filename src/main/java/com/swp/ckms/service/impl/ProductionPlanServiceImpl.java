@@ -47,6 +47,8 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
     private final KitchenStockItemRepository kitchenStockItemRepository;
     private final InventoryTransactionRepository inventoryTransactionRepository;
     private final ProductionOutputRepository productionOutputRepository;
+    private final com.swp.ckms.service.DispatchService dispatchService;
+    private final CentralKitchenRepository kitchenRepository;
 
     @Override
     public ProductionPlanResponse createProductionPlan(ProductionPlanRequest request) {
@@ -64,7 +66,21 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
             throw new AccessDeniedException("User does not belong to any Central Kitchen and cannot create a Production Plan.");
         }
 
-        List<Long> orderIds = Objects.requireNonNull(request.getStoreOrderIds(), "Order IDs list cannot be null");
+        List<Long> orderIds = request.getStoreOrderIds();
+        if (orderIds == null || orderIds.isEmpty()) {
+            log.info("ProductionPlanRequest.storeOrderIds is empty. Invoking DispatchService for auto-suggestion for kitchen {} on {}", kitchen.getKitchenId(), request.getPlannedDate());
+            com.swp.ckms.dto.response.DispatchSuggestionResponse suggestion = dispatchService.suggestProductionPlan(kitchen.getKitchenId(), request.getPlannedDate());
+            orderIds = suggestion.getProducts().stream()
+                    .flatMap(p -> p.getAllocations().stream())
+                    .filter(a -> a.getAllocatedQty().compareTo(java.math.BigDecimal.ZERO) > 0)
+                    .map(com.swp.ckms.dto.response.DispatchSuggestionResponse.OrderAllocationSuggestion::getOrderId)
+                    .distinct()
+                    .collect(Collectors.toList());
+            
+            if (orderIds.isEmpty()) {
+                throw new BusinessRuleViolationException("Không có đơn hàng nào hợp lệ để tạo kế hoạch tự động cho ngày " + request.getPlannedDate());
+            }
+        }
 
         // BR-02: Check Production Capacity (Senior Logic: Check all commitments for the date)
         if (kitchen.getMaxDailyCapacity() != null) {
@@ -95,11 +111,11 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         ProductionPlan savedPlan = Objects.requireNonNull(productionPlanRepository.save(plan), "Saved plan cannot be null");
 
         // Step 3: Atomic Assign Orders
-        int updatedRows = storeOrderRepository.assignOrdersToPlan(savedPlan.getPlanId(), orderIds);
+        int updatedRows = storeOrderRepository.assignOrdersToPlan(savedPlan, orderIds);
 
         // Row Count Validation
         if (updatedRows != orderIds.size()) {
-            throw new OrderAssignmentConflictException("Một hoặc nhiều Order đã được xử lý bởi người khác hoặc không ở trạng thái CONFIRMED. Vui lòng reload!");
+            throw new OrderAssignmentConflictException("Một hoặc nhiều Order đã được xử lý bởi người khác hoặc không ở trạng thái CONFIRMED/APPROVED. Vui lòng reload!");
         }
 
         // Step 4: Snapshot Material Requirement
@@ -109,7 +125,10 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
             log.warn("No material requirements found for Plan ID {}", savedPlan.getPlanId());
         }
 
-        // Step 5: Save Snapshots
+        // Step 5: Save Snapshots & RESERVE Inventory
+        KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(kitchen.getKitchenId())
+                .stream().findFirst().orElse(null);
+
         for (MaterialRequirementProjection requirement : requirements) {
             ProductionPlanMaterialRequirement snapshot = ProductionPlanMaterialRequirement.builder()
                     .plan(savedPlan)
@@ -117,6 +136,11 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                     .requiredQuantity(requirement.getTotal())
                     .build();
             materialRequirementRepository.save(snapshot);
+
+            // RESERVE Logic (FIFO Reservation)
+            if (warehouse != null) {
+                reserveMaterials(warehouse.getWarehouseId(), requirement.getMaterial().getId(), requirement.getTotal());
+            }
         }
 
         return ProductionPlanResponse.builder()
@@ -128,6 +152,26 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                 .createdAt(savedPlan.getCreatedAt())
                 .coordinatorUserId(currentUser.getUserId())
                 .build();
+    }
+
+    private void reserveMaterials(Long warehouseId, Long materialId, BigDecimal totalRequired) {
+        List<KitchenStockItem> stockItems = kitchenStockItemRepository.lockMaterialsForDeduction(warehouseId, Collections.singletonList(materialId));
+        BigDecimal remainingToReserve = totalRequired;
+
+        for (KitchenStockItem item : stockItems) {
+            if (remainingToReserve.compareTo(BigDecimal.ZERO) <= 0) break;
+
+            BigDecimal itemAvailable = item.getQuantity().subtract(item.getReservedQuantity());
+            if (itemAvailable.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            BigDecimal reservedInThisItem = itemAvailable.min(remainingToReserve);
+            item.setReservedQuantity(item.getReservedQuantity().add(reservedInThisItem));
+            remainingToReserve = remainingToReserve.subtract(reservedInThisItem);
+        }
+        
+        if (remainingToReserve.compareTo(BigDecimal.ZERO) > 0) {
+            log.warn("Could not reserve full quantity for material ID {}. Short by {}", materialId, remainingToReserve);
+        }
     }
 
     @Override
@@ -321,14 +365,20 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                     // Exhaust this item
                     deductedQty = itemQty;
                     requiredQty = requiredQty.subtract(itemQty);
+                    
+                    // Deduction from both Physical and Reserved
                     item.setQuantity(BigDecimal.ZERO);
-                    // Also clear reservation if any
-                    item.setReservedQuantity(BigDecimal.ZERO); 
+                    
+                    if (itemReserved.compareTo(deductedQty) >= 0) {
+                        item.setReservedQuantity(itemReserved.subtract(deductedQty));
+                    } else {
+                        item.setReservedQuantity(BigDecimal.ZERO);
+                    }
                 } else {
                     // Partially use this item
                     deductedQty = requiredQty;
                     item.setQuantity(itemQty.subtract(requiredQty));
-                    // Reduce reserved if it was reserved
+                    
                     if (itemReserved.compareTo(deductedQty) >= 0) {
                         item.setReservedQuantity(itemReserved.subtract(deductedQty));
                     } else {
@@ -598,14 +648,24 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         // Step 6: Atomic Release Orders
         storeOrderRepository.releaseOrdersFromPlan(planId);
 
-        // Step 7: Update Plan Status
+        // Step 7: Release Inventory Reservations
+        KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
+                .stream().findFirst().orElse(null);
+        if (warehouse != null && plan.getStatus() != ProductionPlanStatus.IN_PRODUCTION && plan.getStatus() != ProductionPlanStatus.PRODUCED) {
+            List<ProductionPlanMaterialRequirement> requirements = materialRequirementRepository.findByPlan_PlanId(planId);
+            for (ProductionPlanMaterialRequirement req : requirements) {
+                releaseReservation(warehouse.getWarehouseId(), req.getMaterial().getId(), req.getRequiredQuantity());
+            }
+        }
+
+        // Step 8: Update Plan Status
         if (requestVersion != null) {
             plan.setVersion(requestVersion);
         }
         plan.setStatus(ProductionPlanStatus.CANCELLED);
         productionPlanRepository.save(plan);
 
-        // Step 8: Return Response
+        // Step 9: Return Response
         return ProductionPlanResponse.builder()
                 .planId(plan.getPlanId())
                 .planName(plan.getPlanName())
@@ -615,6 +675,23 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                 .createdAt(plan.getCreatedAt())
                 .coordinatorUserId(plan.getCoordinatorUser().getUserId())
                 .build();
+    }
+
+    private void releaseReservation(Long warehouseId, Long materialId, BigDecimal qtyToRelease) {
+        List<KitchenStockItem> items = kitchenStockItemRepository.lockMaterialsForDeduction(warehouseId, Collections.singletonList(materialId));
+        BigDecimal remainingToRelease = qtyToRelease;
+
+        // Try to release from FIFO (opposite of reserve)
+        for (KitchenStockItem item : items) {
+            if (remainingToRelease.compareTo(BigDecimal.ZERO) <= 0) break;
+
+            BigDecimal currentReserved = item.getReservedQuantity() != null ? item.getReservedQuantity() : BigDecimal.ZERO;
+            if (currentReserved.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            BigDecimal releasedFromItem = currentReserved.min(remainingToRelease);
+            item.setReservedQuantity(currentReserved.subtract(releasedFromItem));
+            remainingToRelease = remainingToRelease.subtract(releasedFromItem);
+        }
     }
 
     @Override
