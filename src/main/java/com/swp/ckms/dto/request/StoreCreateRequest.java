@@ -22,5 +22,7 @@ public class StoreCreateRequest {
     private String address;
 
     private String paymentCycle; // e.g., "MONTHLY"
+    
+    private String phoneNumber;
 
 }

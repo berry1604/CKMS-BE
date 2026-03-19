@@ -24,6 +24,8 @@ public class FranchiseStore {
     private String address;
 
     private String paymentCycle;// e.g., "MONTHLY"
+    
+    private String phoneNumber;
 
     @Builder.Default
     @Column(nullable = false)

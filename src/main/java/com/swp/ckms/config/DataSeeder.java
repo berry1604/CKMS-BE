@@ -213,6 +213,7 @@ public class DataSeeder implements CommandLineRunner {
             FranchiseStore store = franchiseStoreRepository.save(FranchiseStore.builder()
                     .name("Cửa Hàng Mẫu CKMS")
                     .address("Số 1 Mạc Đĩnh Chi")
+                    .phoneNumber("0987654321")
                     .paymentCycle("MONTHLY")
                     .build());
             System.out.println(">>> Seeded default Franchise Store");
