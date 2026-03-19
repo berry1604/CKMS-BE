@@ -62,7 +62,7 @@ public class VnPayGateway implements PaymentGateway {
             params.put("vnp_ExpireDate", expireDate);
             params.put("vnp_IpAddr", clientIp != null && !clientIp.isEmpty() ? clientIp : "127.0.0.1");
             //params.put("vnp_IpAddr", "127.0.0.1");
-            System.out.println("Using HashSecret = " + hashSecret); //kiểm tra chữ kí
+            System.out.println("Using HashSecret = " + hashSecret); //check chữ kí
             return buildUrlWithHash(params);
 
         } catch (Exception e) {
