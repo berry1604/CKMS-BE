@@ -363,9 +363,12 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         List<StoreOrder> orders = storeOrderRepository.findByShipment_ShipmentId(shipment.getShipmentId());
         
-        // Use default kitchen warehouse (id=1)
-        KitchenWarehouse kitchenWarehouse = kitchenWarehouseRepository.findById(1L)
-                .orElseThrow(() -> new ResourceNotFoundException("Central Kitchen Warehouse not found"));
+        // Dynamically resolve warehouse based on the kitchen in the Production Plan
+        Long kitchenId = shipment.getProductionPlan().getKitchen().getKitchenId();
+        KitchenWarehouse kitchenWarehouse = kitchenWarehouseRepository.findByKitchen_KitchenId(kitchenId)
+                .stream()
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("No warehouse found for Kitchen ID: " + kitchenId));
 
         for (StoreOrder order : orders) {
             List<AllocationItem> allocationItems = allocationItemRepository.findByOrder_OrderId(order.getOrderId());

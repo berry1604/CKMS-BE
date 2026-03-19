@@ -16,4 +16,5 @@ public class KitchenResponse {
     private String name;
     private String address;
     private BigDecimal maxDailyCapacity;
+    private Long warehouseId;
 }
