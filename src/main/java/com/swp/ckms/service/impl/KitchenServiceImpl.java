@@ -1,11 +1,14 @@
 package com.swp.ckms.service.impl;
 
+import com.swp.ckms.dto.request.KitchenCreateRequest;
 import com.swp.ckms.dto.request.KitchenUpdateRequest;
 import com.swp.ckms.dto.response.KitchenResponse;
 import com.swp.ckms.entity.CentralKitchen;
+import com.swp.ckms.entity.KitchenWarehouse;
 import com.swp.ckms.entity.User;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.repository.CentralKitchenRepository;
+import com.swp.ckms.repository.KitchenWarehouseRepository;
 import com.swp.ckms.repository.UserRepository;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
@@ -24,6 +27,29 @@ public class KitchenServiceImpl implements KitchenService {
 
     private final CentralKitchenRepository kitchenRepository;
     private final UserRepository userRepository;
+    private final KitchenWarehouseRepository warehouseRepository;
+
+    @Override
+    @Transactional
+    public KitchenResponse createKitchen(KitchenCreateRequest request) {
+        CentralKitchen kitchen = CentralKitchen.builder()
+                .name(request.getName())
+                .address(request.getAddress())
+                .maxDailyCapacity(request.getMaxDailyCapacity())
+                .build();
+
+        CentralKitchen savedKitchen = kitchenRepository.save(kitchen);
+
+        // Auto-create default warehouse for this kitchen
+        KitchenWarehouse warehouse = KitchenWarehouse.builder()
+                .kitchen(savedKitchen)
+                .name("Kho - " + savedKitchen.getName())
+                .maxCapacity(new java.math.BigDecimal("1000")) // Default max capacity
+                .build();
+        warehouseRepository.save(warehouse);
+
+        return mapToResponse(savedKitchen);
+    }
 
     @Override
     @Transactional
@@ -56,6 +82,17 @@ public class KitchenServiceImpl implements KitchenService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    @Transactional
+    public void deleteKitchen(Long kitchenId) {
+        CentralKitchen kitchen = kitchenRepository.findById(kitchenId)
+                .orElseThrow(() -> new ResourceNotFoundException("Kitchen not found with ID: " + kitchenId));
+        
+        // Check if there are users or other dependencies if needed
+        // For now, strict delete
+        kitchenRepository.delete(kitchen);
+    }
+
     private void validateKitchenAccess(Long kitchenId) {
         UserContext ctx = SecurityUtils.getCurrentUserContext();
         if (ctx == null) throw new AccessDeniedException("Unauthorized");
@@ -75,11 +112,18 @@ public class KitchenServiceImpl implements KitchenService {
     }
 
     private KitchenResponse mapToResponse(CentralKitchen kitchen) {
+        Long warehouseId = warehouseRepository.findByKitchen_KitchenId(kitchen.getKitchenId())
+                .stream()
+                .map(KitchenWarehouse::getWarehouseId)
+                .findFirst()
+                .orElse(null);
+
         return KitchenResponse.builder()
                 .kitchenId(kitchen.getKitchenId())
                 .name(kitchen.getName())
                 .address(kitchen.getAddress())
                 .maxDailyCapacity(kitchen.getMaxDailyCapacity())
+                .warehouseId(warehouseId)
                 .build();
     }
 }

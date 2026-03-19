@@ -22,6 +22,7 @@ import com.swp.ckms.repository.StoreOrderRepository;
 import com.swp.ckms.repository.StoreStockItemRepository;
 import com.swp.ckms.repository.StoreWarehouseRepository;
 import com.swp.ckms.repository.UserRepository;
+import com.swp.ckms.repository.CentralKitchenRepository;
 import com.swp.ckms.repository.specification.StoreOrderSpecification;
 import com.swp.ckms.entity.StoreWarehouse;
 import com.swp.ckms.exception.business.BusinessRuleViolationException;
@@ -60,6 +61,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
     private final AllocationItemRepository allocationItemRepository;
     private final com.swp.ckms.service.NotificationService notificationService;
     private final com.swp.ckms.util.RecipientResolver recipientResolver;
+    private final CentralKitchenRepository kitchenRepository;
 
     @Override
     public StoreOrderResponse createOrder(StoreOrderRequest request, String username) {
@@ -471,21 +473,26 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
         // --- TRIGGER NOTIFICATION ---
         try {
-            String recipient = recipientResolver.resolveCoordinatorEmail(1L);
-            if (recipient != null) {
-                java.util.Map<String, Object> payload = java.util.Map.of(
-                        "orderId", savedOrder.getOrderId(),
-                        "storeName", savedOrder.getStore().getName(),
-                        "orderDate", savedOrder.getOrderDate().toString()
-                );
-                
-                notificationService.createEmailNotification(
-                        com.swp.ckms.enums.NotificationType.ORDER_SUBMITTED,
-                        recipient,
-                        "order-submitted.html",
-                        payload,
-                        "ORDER_SUBMITTED_" + savedOrder.getOrderId()
-                );
+            // Since stores are independent, we notify all coordinators of all active kitchens
+            List<CentralKitchen> allKitchens = kitchenRepository.findAll();
+            for (CentralKitchen k : allKitchens) {
+                String recipient = recipientResolver.resolveCoordinatorEmail(k.getKitchenId());
+                if (recipient != null) {
+                    java.util.Map<String, Object> payload = java.util.Map.of(
+                            "orderId", savedOrder.getOrderId(),
+                            "storeName", savedOrder.getStore().getName(),
+                            "orderDate", savedOrder.getOrderDate().toString()
+                    );
+                    
+                    notificationService.createEmailNotification(
+                            com.swp.ckms.enums.NotificationType.ORDER_SUBMITTED,
+                            recipient,
+                            "order-submitted.html",
+                            payload,
+                            "ORDER_SUBMITTED_" + savedOrder.getOrderId()
+                    );
+                    log.info("Notification sent to coordinator {} for order #{}", recipient, savedOrder.getOrderId());
+                }
             }
         } catch (Exception e) {
             log.error("Failed to trigger order submission notification", e);
