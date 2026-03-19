@@ -10,9 +10,11 @@ import com.swp.ckms.entity.OrderDetail;
 import com.swp.ckms.entity.Product;
 import com.swp.ckms.entity.StoreOrder;
 import com.swp.ckms.entity.User;
+import com.swp.ckms.entity.AllocationItem;
 import com.swp.ckms.enums.InvoiceStatus;
 import com.swp.ckms.enums.OrderStatus;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
+import com.swp.ckms.repository.AllocationItemRepository;
 import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.InvoiceRepository;
 import com.swp.ckms.repository.ProductRepository;
@@ -55,6 +57,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
     private final InvoiceRepository invoiceRepository;
     private final StoreWarehouseRepository storeWarehouseRepository;
     private final StoreStockItemRepository storeStockItemRepository;
+    private final AllocationItemRepository allocationItemRepository;
     private final com.swp.ckms.service.NotificationService notificationService;
     private final com.swp.ckms.util.RecipientResolver recipientResolver;
 
@@ -381,8 +384,22 @@ public class StoreOrderServiceImpl implements StoreOrderService {
     }
 
     private StoreOrderResponse mapToOrderResponse(StoreOrder order) {
+        java.util.Map<Long, AllocationItem> allocationMap = java.util.Collections.emptyMap();
+        
+        // If order is allocated or further, fetch allocation items for precise display
+        if (order.getStatus() == OrderStatus.ALLOCATED || 
+            order.getStatus() == OrderStatus.IN_TRANSIT || 
+            order.getStatus() == OrderStatus.DELIVERED || 
+            order.getStatus() == OrderStatus.CONFIRMED) {
+            
+            List<AllocationItem> allocationItems = allocationItemRepository.findByOrder_OrderId(order.getOrderId());
+            allocationMap = allocationItems.stream()
+                    .collect(Collectors.toMap(ai -> ai.getProduct().getId(), ai -> ai));
+        }
+
+        final java.util.Map<Long, AllocationItem> finalAllocationMap = allocationMap;
         List<OrderDetailResponse> detailResponses = order.getOrderDetails().stream()
-                .map(this::mapToDetailResponse)
+                .map(d -> mapToDetailResponse(d, finalAllocationMap.get(d.getProduct().getId())))
                 .collect(Collectors.toList());
 
         return StoreOrderResponse.builder()
@@ -400,16 +417,22 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .build();
     }
 
-    private OrderDetailResponse mapToDetailResponse(OrderDetail detail) {
+    private OrderDetailResponse mapToDetailResponse(OrderDetail detail, AllocationItem allocationItem) {
         Product product = detail.getProduct();
-        BigDecimal subTotal = detail.getUnitPrice().multiply(BigDecimal.valueOf(detail.getQuantity()));
+        
+        // Use allocated quantity if available, otherwise use original requested quantity
+        BigDecimal displayQty = (allocationItem != null) 
+                ? allocationItem.getFinalQty() 
+                : BigDecimal.valueOf(detail.getQuantity());
+                
+        BigDecimal subTotal = detail.getUnitPrice().multiply(displayQty);
         
         return OrderDetailResponse.builder()
                 .id(detail.getId())
                 .productId(product.getId())
                 .productName(product.getName())
                 .unit(product.getUnit() != null ? product.getUnit().name() : null)
-                .quantity(detail.getQuantity())
+                .quantity(displayQty.intValue()) // Keep as int for DTO compatibility
                 .unitPrice(detail.getUnitPrice())
                 .subTotal(subTotal)
                 .build();
