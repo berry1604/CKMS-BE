@@ -1,5 +1,6 @@
 package com.swp.ckms.service.impl;
 
+import java.util.Objects;
 import com.swp.ckms.dto.request.FinishProductionPlanRequest;
 import com.swp.ckms.dto.request.ProductionOutputRequest;
 import com.swp.ckms.dto.request.ProductionPlanRequest;
@@ -99,10 +100,18 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         String planName = "Plan_" + LocalDateTime.now().toString().replace(":", "-");
 
         // Step 2: Create ProductionPlan (NOT committed yet)
+        long dailyCount = productionPlanRepository.countByPlannedDateAndKitchen_KitchenId(
+                request.getPlannedDate(), kitchen.getKitchenId());
+        String batchCode = String.format("BATCH-%s-K%d-%03d",
+                request.getPlannedDate().toString().replace("-", ""),
+                kitchen.getKitchenId(),
+                dailyCount + 1);
+
         ProductionPlan plan = ProductionPlan.builder()
                 .kitchen(kitchen)
                 .coordinatorUser(currentUser)
                 .planName(planName)
+                .batchCode(batchCode)
                 .plannedDate(request.getPlannedDate())
                 .status(ProductionPlanStatus.PLANNED)
                 .createdAt(LocalDateTime.now())

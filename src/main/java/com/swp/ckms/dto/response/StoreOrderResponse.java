@@ -20,6 +20,7 @@ public class StoreOrderResponse {
     private LocalDateTime orderDate;
     private String status;
     private Long batchId;
+    private String batchCode;
     private BigDecimal totalAmount;
     private java.time.LocalDate deliveryDate;
     private String storeName;
