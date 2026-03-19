@@ -404,6 +404,17 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Billing statement not found with id: " + statementId)
                 );
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null) {
+            throw new ForbiddenException("Authentication required");
+        }
+
+
+        if ("STORE".equalsIgnoreCase(ctx.getScope())) {
+            if (!statement.getStore().getStoreId().equals(ctx.getStoreId())) {
+                throw new ForbiddenException("You cannot pay other store's statement");
+            }
+        }
 
         if (statement.getStatus() != BillingStatementStatus.ISSUED &&
                 statement.getStatus() != BillingStatementStatus.OVERDUE) {

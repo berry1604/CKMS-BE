@@ -145,7 +145,7 @@ public class BillingStatementController {
     }
 
     @PostMapping("/{id}/vnpay")
-    @PreAuthorize("hasAuthority('CONFIRM_PAYMENT')")
+    @PreAuthorize("hasAuthority('PAY_BILLING')")
     public ResponseEntity<ApiResponse<String>> createVnPayPayment(@PathVariable Long id, HttpServletRequest request) {
 
         String ipAddress = request.getHeader("X-Forwarded-For");
