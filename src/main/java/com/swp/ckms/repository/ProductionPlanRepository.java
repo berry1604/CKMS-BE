@@ -27,4 +27,6 @@ public interface ProductionPlanRepository extends JpaRepository<ProductionPlan, 
     java.math.BigDecimal sumPlannedQuantityByKitchenAndDate(
             @Param("kitchenId") Long kitchenId, 
             @Param("plannedDate") java.time.LocalDate plannedDate);
+
+    long countByPlannedDateAndKitchen_KitchenId(java.time.LocalDate plannedDate, Long kitchenId);
 }

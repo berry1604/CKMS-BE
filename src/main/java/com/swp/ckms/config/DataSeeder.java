@@ -88,7 +88,7 @@ public class DataSeeder implements CommandLineRunner {
                 "VIEW_KITCHEN_INVENTORY", "VIEW_STORE_INVENTORY",
                 "VIEW_BILLING", "VIEW_INVOICE", "VIEW_REPORTS", "VIEW_DASHBOARD",
                 "VIEW_STORE_ORDER", "APPROVE_STORE_ORDER", "MANAGE_STORES",
-                "PAY_BILLING", "CONFIRM_PAYMENT"
+                "PAY_BILLING", "CONFIRM_PAYMENT", "MANAGE_KITCHEN_CONFIG"
         ));
         Set<Privilege> managerPrivileges = allPrivileges.stream()
                 .filter(p -> managerCodes.contains(p.getCode()))
@@ -127,7 +127,7 @@ public class DataSeeder implements CommandLineRunner {
                 "CREATE_STORE_ORDER", "VIEW_STORE_ORDER", "UPDATE_STORE_ORDER",
                 "VIEW_STORE_INVENTORY", "UPDATE_STORE_INVENTORY",
                 "CONFIRM_SHIPMENT", "VIEW_SHIPMENT",
-                "VIEW_PRODUCT", "VIEW_BILLING"
+                "VIEW_PRODUCT", "VIEW_BILLING", "PAY_BILLING"
         ));
         Set<Privilege> storeStaffPrivileges = allPrivileges.stream()
                 .filter(p -> storeStaffCodes.contains(p.getCode()))

@@ -391,8 +391,11 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .createdByUserId(order.getCreatedByUser().getUserId())
                 .orderDate(order.getOrderDate())
                 .status(order.getStatus().name())
-                .batchId(order.getBatchId())
+                .batchId(order.getProductionPlan() != null ? order.getProductionPlan().getPlanId() : order.getBatchId())
+                .batchCode(order.getProductionPlan() != null ? order.getProductionPlan().getBatchCode() : null)
                 .totalAmount(order.getTotalAmount())
+                .deliveryDate(order.getDeliveryDate())
+                .storeName(order.getStore() != null ? order.getStore().getName() : null)
                 .orderDetails(detailResponses)
                 .build();
     }
