@@ -100,7 +100,7 @@ public class DataSeeder implements CommandLineRunner {
         Set<String> coordinatorCodes = new HashSet<>(Arrays.asList(
                 "VIEW_STORE_ORDER", "APPROVE_STORE_ORDER", "UPDATE_STORE_ORDER",
                 "ORGANIZE_PRODUCTION", "CREATE_PRODUCTION_PLAN", "VIEW_PRODUCTION_PLAN", "UPDATE_PRODUCTION_PLAN",
-                "CREATE_SHIPMENT", "START_SHIPMENT", "CANCEL_SHIPMENT", "VIEW_SHIPMENT",
+                "CREATE_SHIPMENT", "START_SHIPMENT", "CANCEL_SHIPMENT", "VIEW_SHIPMENT", "PREPARE_SHIPMENT",
                 "VIEW_INVOICE", "VIEW_BILLING", "VIEW_KITCHEN_INVENTORY", "VIEW_DASHBOARD",
                 "VIEW_RECIPE", "PAY_BILLING", "CONFIRM_PAYMENT"
         ));
@@ -114,7 +114,7 @@ public class DataSeeder implements CommandLineRunner {
         Set<String> kitchenCodes = new HashSet<>(Arrays.asList(
                 "VIEW_PRODUCTION_PLAN", "EXECUTE_PRODUCTION", "UPDATE_PRODUCTION_PLAN",
                 "VIEW_KITCHEN_INVENTORY", "UPDATE_KITCHEN_INVENTORY", "ADJUST_KITCHEN_STOCK",
-                "PREPARE_SHIPMENT", "VIEW_SHIPMENT", "VIEW_PRODUCT", "VIEW_MATERIAL"
+                "START_SHIPMENT", "VIEW_SHIPMENT", "VIEW_PRODUCT", "VIEW_MATERIAL"
         ));
         Set<Privilege> kitchenPrivileges = allPrivileges.stream()
                 .filter(p -> kitchenCodes.contains(p.getCode()))
@@ -211,7 +211,6 @@ public class DataSeeder implements CommandLineRunner {
             storeWarehouseRepository.save(StoreWarehouse.builder()
                     .name("Kho Cửa Hàng (Mẫu)")
                     .store(store)
-                    .maxCapacity(java.math.BigDecimal.valueOf(1000))
                     .build());
             System.out.println(">>> Seeded default Store Warehouse");
         }

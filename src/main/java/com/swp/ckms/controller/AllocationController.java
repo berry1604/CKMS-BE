@@ -22,15 +22,16 @@ public class AllocationController {
             @PathVariable Long productionPlanId,
             @RequestHeader(value = "If-Match", required = false) Long version,
             @RequestBody(required = false) AllocationAdjustmentRequest adjustmentRequest) {
-        
+
         ProductionPlanResponse response = allocationService.confirmAllocation(productionPlanId, version, adjustmentRequest);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/preview/{productionPlanId}")
-    @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION')")
+    @PreAuthorize("hasAnyAuthority('ORGANIZE_PRODUCTION','VIEW_PRODUCTION_PLAN')")
     public ResponseEntity<AllocationPreviewResponse> previewAllocation(
             @PathVariable Long productionPlanId) {
+
         return ResponseEntity.ok(allocationService.previewAllocation(productionPlanId));
     }
 }

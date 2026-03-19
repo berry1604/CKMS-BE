@@ -13,6 +13,7 @@ import com.swp.ckms.repository.*;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.ShipmentService;
+import com.swp.ckms.integration.ahamove.shipment.AhamoveShipmentService;
 import com.swp.ckms.enums.InventoryTransactionType;
 import com.swp.ckms.enums.InvoiceStatus;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +23,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.swp.ckms.service.AhamoveShipmentService;
+
 import java.util.ArrayList;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -181,9 +182,9 @@ public class ShipmentServiceImpl implements ShipmentService {
                     throw new IllegalArgumentException("Order #" + order.getOrderId() 
                             + " does not belong to store #" + store.getStoreId());
                 }
-                if (order.getStatus() != OrderStatus.READY) {
-                    throw new IllegalStateException("Order #" + order.getOrderId() + " is not READY");
-                }
+                // if (order.getStatus() != OrderStatus.READY) {
+                //     throw new IllegalStateException("Order #" + order.getOrderId() + " is not READY");
+                // }
                 if (order.getShipmentStop() != null) {
                     throw new IllegalStateException("Order #" + order.getOrderId() + " already assigned to a shipment");
                 }

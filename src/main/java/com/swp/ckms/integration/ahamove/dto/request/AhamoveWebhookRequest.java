@@ -1,4 +1,4 @@
-package com.swp.ckms.dto.ahamove;
+package com.swp.ckms.integration.ahamove.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;

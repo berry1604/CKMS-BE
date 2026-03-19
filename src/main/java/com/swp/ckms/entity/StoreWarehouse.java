@@ -25,6 +25,4 @@ public class StoreWarehouse {
     @Column(nullable = false)
     private String name;
 
-    @Column(precision = 19, scale = 2)
-    private java.math.BigDecimal maxCapacity;
 }

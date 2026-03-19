@@ -1,8 +1,8 @@
-package com.swp.ckms.service;
+package com.swp.ckms.integration.ahamove.shipment;
 
 import com.swp.ckms.entity.Shipment;
 import com.swp.ckms.enums.ShipmentStatus;
-import com.swp.ckms.dto.ahamove.AhamoveWebhookRequest;
+import com.swp.ckms.integration.ahamove.dto.request.AhamoveWebhookRequest;
 
 public interface AhamoveShipmentService {
 

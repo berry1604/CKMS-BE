@@ -1,4 +1,4 @@
-package com.swp.ckms.config;
+package com.swp.ckms.integration.ahamove.config;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -11,6 +11,4 @@ public class AhamoveProperties {
     private String baseUrl;
     private String key;
     private String phone;
-    // private String name;
-    // private String address;
 }

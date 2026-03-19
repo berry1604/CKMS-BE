@@ -36,6 +36,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -76,25 +77,6 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .batchId(null)
                 .build();
 
-        // BR-01: Check Warehouse Capacity
-        StoreWarehouse warehouse = storeWarehouseRepository.findByStore_StoreId(store.getStoreId())
-                .orElse(null); // If no warehouse, we might skip or fail. SRS says receiving updates warehouse, so it should exist.
-
-        if (warehouse != null && warehouse.getMaxCapacity() != null) {
-            BigDecimal currentQty = storeStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
-            if (currentQty == null) currentQty = BigDecimal.ZERO;
-
-            double newOrderQty = request.getItems().stream()
-                    .map(OrderItemRequest::getQuantity)
-                    .mapToInt(Integer::intValue)
-                    .sum();
-
-            if (currentQty.add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
-                throw new BusinessRuleViolationException(String.format(
-                        "Đơn hàng vượt quá sức chứa của kho. (Tối đa: %s, Hiện tại: %s, Đặt thêm: %s)",
-                        warehouse.getMaxCapacity(), currentQty, newOrderQty));
-            }
-        }
 
         List<Long> productIds = request.getItems().stream()
                 .map(OrderItemRequest::getProductId)
@@ -215,22 +197,6 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             throw new org.springframework.security.access.AccessDeniedException("You can only modify orders of your own store");
         }
 
-        // BR-01: Re-check Warehouse Capacity
-        FranchiseStore store = order.getStore();
-        StoreWarehouse warehouse = storeWarehouseRepository.findByStore_StoreId(store.getStoreId())
-                .orElse(null);
-
-        if (warehouse != null && warehouse.getMaxCapacity() != null) {
-            BigDecimal currentQty = storeStockItemRepository.getTotalQuantityByWarehouseId(warehouse.getWarehouseId());
-            if (currentQty == null) currentQty = BigDecimal.ZERO;
-
-            int oldOrderQty = order.getOrderDetails().stream().mapToInt(com.swp.ckms.entity.OrderDetail::getQuantity).sum();
-            int newOrderQty = request.getItems().stream().mapToInt(com.swp.ckms.dto.request.OrderItemRequest::getQuantity).sum();
-
-            if (currentQty.subtract(BigDecimal.valueOf(oldOrderQty)).add(BigDecimal.valueOf(newOrderQty)).compareTo(warehouse.getMaxCapacity()) > 0) {
-                throw new BusinessRuleViolationException("Updated order exceeds warehouse capacity.");
-            }
-        }
 
         // Update details
         order.getOrderDetails().clear();
@@ -500,5 +466,188 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         }
 
         return mapToOrderResponse(savedOrder);
+    }
+
+    @Override
+    @Transactional
+    public StoreOrderResponse rescheduleOrder(Long id, LocalDate newDeliveryDate) {
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null) {
+            throw new org.springframework.security.access.AccessDeniedException("User context not found");
+        }
+
+        if (!"SYSTEM".equalsIgnoreCase(ctx.getScope())) {
+            throw new org.springframework.security.access.AccessDeniedException("Only coordinators can reschedule orders");
+        }
+
+        StoreOrder order = storeOrderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with ID: " + id));
+
+        if (order.getStatus() == OrderStatus.LOCKED || order.getStatus() == OrderStatus.ALLOCATED || 
+            order.getStatus() == OrderStatus.IN_TRANSIT || order.getStatus() == OrderStatus.DELIVERED || 
+            order.getStatus() == OrderStatus.CONFIRMED) {
+            throw new BusinessRuleViolationException("Cannot reschedule order in current state: " + order.getStatus());
+        }
+
+        if (order.getProductionPlan() != null) {
+            throw new BusinessRuleViolationException("Order is currently assigned to a Production Plan. Please remove it from the plan first.");
+        }
+
+        if (order.getStatus() == OrderStatus.APPROVED) {
+            User approvedBy = userRepository.findById(ctx.getUserId())
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+            CentralKitchen kitchen = approvedBy.getKitchen();
+            
+            if (kitchen != null && kitchen.getMaxDailyCapacity() != null) {
+                java.math.BigDecimal existingLoad = storeOrderRepository.sumQuantityByKitchenAndDeliveryDate(
+                        kitchen.getKitchenId(), newDeliveryDate);
+                if (existingLoad == null) existingLoad = java.math.BigDecimal.ZERO;
+
+                java.math.BigDecimal orderLoad = java.math.BigDecimal.valueOf(
+                        order.getOrderDetails().stream().mapToDouble(d -> d.getQuantity()).sum());
+
+                if (existingLoad.add(orderLoad).compareTo(kitchen.getMaxDailyCapacity()) > 0) {
+                    throw new BusinessRuleViolationException(String.format(
+                            "Không thể đổi ngày: Tổng tải sản xuất ngày %s sẽ vượt quá công suất bếp %s (Hiện có: %s, Đơn này: %s)",
+                            newDeliveryDate, kitchen.getMaxDailyCapacity(), existingLoad, orderLoad));
+                }
+            }
+        }
+
+        log.info("Rescheduling order {} from {} to {}", id, order.getDeliveryDate(), newDeliveryDate);
+        order.setDeliveryDate(newDeliveryDate);
+        StoreOrder savedOrder = storeOrderRepository.save(order);
+
+        try {
+             String recipient = recipientResolver.resolveStoreManagerEmail(order.getStore().getStoreId(), order.getCreatedByUser().getUserId());
+             if (recipient != null) {
+                 java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                 payload.put("orderId", savedOrder.getOrderId());
+                 payload.put("newDeliveryDate", savedOrder.getDeliveryDate().toString());
+                 payload.put("status", savedOrder.getStatus().name());
+                 
+                 notificationService.createEmailNotification(
+                         com.swp.ckms.enums.NotificationType.ORDER_STATUS_CHANGED,
+                         recipient,
+                         "order-status-changed.html",
+                         payload,
+                         "ORDER_RESCHEDULED_" + savedOrder.getOrderId()
+                 );
+             }
+        } catch (Exception e) {
+            log.error("Failed to trigger reschedule notification", e);
+        }
+
+        return mapToOrderResponse(savedOrder);
+    }
+
+    @Override
+    @Transactional
+    public List<StoreOrderResponse> splitOrder(Long id, List<com.swp.ckms.dto.request.OrderItemRequest> itemsToSplit) {
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
+        if (ctx == null) throw new org.springframework.security.access.AccessDeniedException("Unauthorized");
+        if (!"SYSTEM".equalsIgnoreCase(ctx.getScope())) throw new org.springframework.security.access.AccessDeniedException("Only coordinators can split orders");
+
+        StoreOrder originalOrder = storeOrderRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with ID: " + id));
+
+        if (originalOrder.getProductionPlan() != null) {
+            throw new BusinessRuleViolationException("Cannot split order that is already assigned to a production plan.");
+        }
+
+        if (originalOrder.getStatus() != OrderStatus.APPROVED && originalOrder.getStatus() != OrderStatus.SUBMITTED) {
+            throw new BusinessRuleViolationException("Only SUBMITTED or APPROVED orders can be split. Current: " + originalOrder.getStatus());
+        }
+
+        if (originalOrder.getInvoice() != null && originalOrder.getInvoice().getStatement() != null) {
+            throw new BusinessRuleViolationException("Cannot split order as its invoice is already included in a Billing Statement.");
+        }
+
+        StoreOrder newOrder = StoreOrder.builder()
+                .store(originalOrder.getStore())
+                .createdByUser(originalOrder.getCreatedByUser())
+                .orderDate(originalOrder.getOrderDate())
+                .deliveryDate(originalOrder.getDeliveryDate())
+                .status(originalOrder.getStatus())
+                .approvedByUser(originalOrder.getApprovedByUser())
+                .approvedAt(originalOrder.getApprovedAt())
+                .orderDetails(new ArrayList<>())
+                .build();
+
+        for (com.swp.ckms.dto.request.OrderItemRequest splitItem : itemsToSplit) {
+            OrderDetail originalDetail = originalOrder.getOrderDetails().stream()
+                    .filter(d -> d.getProduct().getId().equals(splitItem.getProductId()))
+                    .findFirst()
+                    .orElseThrow(() -> new BusinessRuleViolationException("Product " + splitItem.getProductId() + " not found in original order"));
+
+            if (splitItem.getQuantity() <= 0 || splitItem.getQuantity() >= originalDetail.getQuantity()) {
+                throw new BusinessRuleViolationException("Invalid quantity to split for product " + splitItem.getProductId());
+            }
+
+            originalDetail.setQuantity(originalDetail.getQuantity() - splitItem.getQuantity());
+
+            OrderDetail newDetail = OrderDetail.builder()
+                    .order(newOrder)
+                    .product(originalDetail.getProduct())
+                    .quantity(splitItem.getQuantity())
+                    .unitPrice(originalDetail.getUnitPrice())
+                    .build();
+            newOrder.getOrderDetails().add(newDetail);
+        }
+
+        originalOrder.setTotalAmount(calculateTotal(originalOrder.getOrderDetails()));
+        newOrder.setTotalAmount(calculateTotal(newOrder.getOrderDetails()));
+
+        storeOrderRepository.save(originalOrder);
+        StoreOrder savedNewOrder = storeOrderRepository.save(newOrder);
+
+        if (originalOrder.getStatus() == OrderStatus.APPROVED && originalOrder.getInvoice() != null) {
+             com.swp.ckms.entity.Invoice oldInvoice = originalOrder.getInvoice();
+             oldInvoice.setStatus(com.swp.ckms.enums.InvoiceStatus.CANCELLED);
+             invoiceRepository.save(oldInvoice);
+
+             createInvoiceForOrder(originalOrder);
+             createInvoiceForOrder(savedNewOrder);
+        }
+
+        // Notify Store Manager about the split
+        try {
+            String recipient = recipientResolver.resolveStoreManagerEmail(originalOrder.getStore().getStoreId(), originalOrder.getCreatedByUser().getUserId());
+            if (recipient != null) {
+                java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                payload.put("originalOrderId", originalOrder.getOrderId());
+                payload.put("newOrderId", savedNewOrder.getOrderId());
+                payload.put("deliveryDate", originalOrder.getDeliveryDate().toString());
+                
+                notificationService.createEmailNotification(
+                        com.swp.ckms.enums.NotificationType.ORDER_STATUS_CHANGED,
+                        recipient,
+                        "order-status-changed.html",
+                        payload,
+                        "ORDER_SPLIT_" + originalOrder.getOrderId()
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to trigger split notification", e);
+        }
+
+        return List.of(mapToOrderResponse(originalOrder), mapToOrderResponse(savedNewOrder));
+    }
+
+    private BigDecimal calculateTotal(List<OrderDetail> details) {
+        return details.stream()
+                .map(d -> d.getUnitPrice().multiply(BigDecimal.valueOf(d.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private void createInvoiceForOrder(StoreOrder order) {
+        com.swp.ckms.entity.Invoice invoice = com.swp.ckms.entity.Invoice.builder()
+                .order(order)
+                .amount(order.getTotalAmount())
+                .issuedAt(LocalDateTime.now())
+                .status(com.swp.ckms.enums.InvoiceStatus.PENDING)
+                .build();
+        invoiceRepository.save(invoice);
+        order.setInvoice(invoice);
     }
 }

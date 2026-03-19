@@ -1,7 +1,7 @@
-package com.swp.ckms.service;
+package com.swp.ckms.integration.ahamove.service;
 
-import com.swp.ckms.dto.ahamove.AhamoveOrderRequest;
-import com.swp.ckms.dto.ahamove.AhamoveOrderResponse;
+import com.swp.ckms.integration.ahamove.dto.request.AhamoveOrderRequest;
+import com.swp.ckms.integration.ahamove.dto.response.AhamoveOrderResponse;
 
 public interface AhamoveService {
     /**

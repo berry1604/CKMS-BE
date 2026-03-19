@@ -1,10 +1,10 @@
-package com.swp.ckms.service.impl;
+package com.swp.ckms.integration.ahamove.service.impl;
 
-import com.swp.ckms.config.AhamoveProperties;
-import com.swp.ckms.dto.ahamove.AhamoveOrderRequest;
-import com.swp.ckms.dto.ahamove.AhamoveOrderResponse;
-import com.swp.ckms.dto.ahamove.AhamoveTokenResponse;
-import com.swp.ckms.service.AhamoveService;
+import com.swp.ckms.integration.ahamove.config.AhamoveProperties;
+import com.swp.ckms.integration.ahamove.dto.request.AhamoveOrderRequest;
+import com.swp.ckms.integration.ahamove.dto.response.AhamoveOrderResponse;
+import com.swp.ckms.integration.ahamove.dto.response.AhamoveTokenResponse;
+import com.swp.ckms.integration.ahamove.service.AhamoveService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;

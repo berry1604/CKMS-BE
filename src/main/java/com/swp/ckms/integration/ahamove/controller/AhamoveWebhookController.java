@@ -1,7 +1,7 @@
-package com.swp.ckms.controller;
+package com.swp.ckms.integration.ahamove.controller;
 
-import com.swp.ckms.dto.ahamove.AhamoveWebhookRequest;
-import com.swp.ckms.service.AhamoveShipmentService;
+import com.swp.ckms.integration.ahamove.dto.request.AhamoveWebhookRequest;
+import com.swp.ckms.integration.ahamove.shipment.AhamoveShipmentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;

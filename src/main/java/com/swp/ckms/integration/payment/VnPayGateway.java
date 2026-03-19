@@ -33,10 +33,15 @@ public class VnPayGateway implements PaymentGateway {
 
             String txnRef = referenceId + "_" + System.currentTimeMillis();
             
-            // Fix Timezone chuẩn của VNPay GMT+7
-            Calendar cld = Calendar.getInstance(TimeZone.getTimeZone("Etc/GMT+7"));
+            // Timezone VNPay GMT+7
+            TimeZone tz = TimeZone.getTimeZone("Asia/Ho_Chi_Minh");
+
+            Calendar cld = Calendar.getInstance(tz);
             SimpleDateFormat formatter = new SimpleDateFormat("yyyyMMddHHmmss");
-            formatter.setTimeZone(TimeZone.getTimeZone("Etc/GMT+7"));
+            formatter.setTimeZone(tz);
+
+
+
             String createDate = formatter.format(cld.getTime());
 
             // Add Expire Date (15 minutes limit)
@@ -56,7 +61,8 @@ public class VnPayGateway implements PaymentGateway {
             params.put("vnp_CreateDate", createDate);
             params.put("vnp_ExpireDate", expireDate);
             params.put("vnp_IpAddr", clientIp != null && !clientIp.isEmpty() ? clientIp : "127.0.0.1");
-
+            //params.put("vnp_IpAddr", "127.0.0.1");
+            System.out.println("Using HashSecret = " + hashSecret); //kiểm tra chữ kí
             return buildUrlWithHash(params);
 
         } catch (Exception e) {
@@ -69,7 +75,6 @@ public class VnPayGateway implements PaymentGateway {
     public boolean verifySignature(Map<String, String> params) {
 
         String receivedHash = params.get("vnp_SecureHash");
-
         if (receivedHash == null) {
             return false;
         }
@@ -87,7 +92,7 @@ public class VnPayGateway implements PaymentGateway {
             String value = filtered.get(key);
             if (value != null && !value.isEmpty()) {
 
-                String encodedValue = encodeParam(value);
+                String encodedValue = URLEncoder.encode(value, StandardCharsets.US_ASCII);
 
                 hashData.append(key)
                         .append("=")
@@ -127,8 +132,8 @@ public class VnPayGateway implements PaymentGateway {
             String value = params.get(key);
             if (value != null && !value.isEmpty()) {
 
-                String encodedKey = encodeParam(key);
-                String encodedValue = encodeParam(value);
+                String encodedKey = URLEncoder.encode(key, StandardCharsets.US_ASCII);
+                String encodedValue = URLEncoder.encode(value, StandardCharsets.US_ASCII);
 
                 // Hash trên encoded value
                 hashData.append(key).append("=").append(encodedValue).append("&");
@@ -148,27 +153,12 @@ public class VnPayGateway implements PaymentGateway {
         return payUrl + "?" + query + "&vnp_SecureHash=" + secureHash;
     }
 
-    private String buildHashData(Map<String, String> params) {
-        List<String> keys = new ArrayList<>(params.keySet());
-        Collections.sort(keys);
 
-        StringBuilder hashData = new StringBuilder();
-
-        for (String key : keys) {
-            String value = params.get(key);
-            if (value != null && !value.isEmpty()) {
-                hashData.append(key).append("=").append(value).append("&");
-            }
-        }
-
-        hashData.deleteCharAt(hashData.length() - 1);
-        return hashData.toString();
-    }
 
     private String hmacSHA512(String key, String data) {
         try {
             Mac mac = Mac.getInstance("HmacSHA512");
-            SecretKeySpec secretKey = new SecretKeySpec(key.getBytes(), "HmacSHA512");
+            SecretKeySpec secretKey = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), "HmacSHA512");
             mac.init(secretKey);
             byte[] hash = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
 
@@ -182,17 +172,5 @@ public class VnPayGateway implements PaymentGateway {
         }
     }
 
-    private String encodeParam(String value) {
-        try {
-            return URLEncoder.encode(value, StandardCharsets.UTF_8.toString())
-                    .replaceAll("\\+", "%20")     // Fix URL encoding for spaces
-                    .replaceAll("\\%21", "!")
-                    .replaceAll("\\%27", "'")
-                    .replaceAll("\\%28", "(")
-                    .replaceAll("\\%29", ")")
-                    .replaceAll("\\%7E", "~");
-        } catch (Exception e) {
-            return value;
-        }
-    }
+
 }
