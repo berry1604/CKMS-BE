@@ -33,7 +33,7 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     @Query("""
         SELECT 
             rd.material AS material,
-            SUM(od.quantity * rd.quantityNeeded) AS total
+            SUM((CAST(od.quantity AS double) / r.yield) * rd.quantityNeeded) AS total
         FROM StoreOrder so
         JOIN so.orderDetails od
         JOIN od.product p

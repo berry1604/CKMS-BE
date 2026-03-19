@@ -25,6 +25,14 @@ import com.swp.ckms.repository.RoleRepository;
 import com.swp.ckms.repository.StoreWarehouseRepository;
 import com.swp.ckms.repository.PaymentMethodRepository;
 import com.swp.ckms.entity.PaymentMethod;
+import com.swp.ckms.entity.Material;
+import com.swp.ckms.entity.Product;
+import com.swp.ckms.entity.Category;
+import com.swp.ckms.entity.Recipe;
+import com.swp.ckms.entity.RecipeDetail;
+import com.swp.ckms.entity.KitchenStockItem;
+import com.swp.ckms.enums.UnitType;
+import com.swp.ckms.repository.*;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -45,6 +53,12 @@ public class DataSeeder implements CommandLineRunner {
     private final FranchiseStoreRepository franchiseStoreRepository;
     private final StoreWarehouseRepository storeWarehouseRepository;
     private final PaymentMethodRepository paymentMethodRepository;
+    private final MaterialRepository materialRepository;
+    private final ProductRepository productRepository;
+    private final CategoryRepository categoryRepository;
+    private final RecipeRepository recipeRepository;
+    private final RecipeDetailRepository recipeDetailRepository;
+    private final KitchenStockItemRepository kitchenStockItemRepository;
 
     @Override
     @Transactional
@@ -58,6 +72,7 @@ public class DataSeeder implements CommandLineRunner {
         seedUsersAndRoles(allPrivileges);
 
         seedPaymentMethods();
+        seedBusinessData();
     }
 
     private Set<Privilege> seedPrivileges() {
@@ -220,5 +235,11 @@ public class DataSeeder implements CommandLineRunner {
                 System.out.println(">>> Seeded Payment Method: " + methodName);
             }
         }
+    }
+
+    private void seedBusinessData() {
+        // CLEAN SLATE: Let the user create Categories, Materials, Products and Recipes via UI
+        // This ensures all calculations are based on REAL USER INPUT
+        System.out.println(">>> Business Data seeding is EMPTY (Ready for manual UI testing)");
     }
 }
