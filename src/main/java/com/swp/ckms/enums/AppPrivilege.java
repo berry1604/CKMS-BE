@@ -77,7 +77,8 @@ public enum AppPrivilege {
 
     // Dashboard & Analysis
     VIEW_DASHBOARD("VIEW_DASHBOARD", "Có thể xem dashboard"),
-    VIEW_REPORTS("VIEW_REPORTS", "Xem báo cáo phân tích hiệu suất (Manager)");
+    VIEW_REPORTS("VIEW_REPORTS", "Xem báo cáo phân tích hiệu suất (Manager)"),
+    MANAGE_KITCHEN_CONFIG("MANAGE_KITCHEN_CONFIG", "Quản lý cấu hình bếp (công suất, thông tin cơ bản)");
 
     private final String code;
     private final String description;
