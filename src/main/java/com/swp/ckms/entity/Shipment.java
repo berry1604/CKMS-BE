@@ -22,26 +22,27 @@ public class Shipment {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long shipmentId;
-// Tích hợp ahamove thì thêm vào
-    // @Column(name = "ahamove_order_id")
-    // private String ahamoveOrderId;
+    @Column(name = "ahamove_order_id")
+    private String ahamoveOrderId;
 
-    // @Column(name = "tracking_link")
-    // private String trackingLink;
+    @Column(name = "tracking_link")
+    private String trackingLink;
 
-    // Shipment giao cho cửa hàng nào
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "store_id", nullable = false)
-    private FranchiseStore store;
+    @Column(name = "ahamove_status")
+    private String ahamoveStatus;
+    @Column(name = "ahamove_service_id")
+    private String ahamoveServiceId;
 
     // Shipment thuộc production plan nào
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "plan_id")
     private ProductionPlan productionPlan;
 
+
     // Các đơn hàng trong shipment này
     @OneToMany(mappedBy = "shipment", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<StoreOrder> storeOrders;
+    @OrderBy("stopOrder ASC") // Sắp xếp theo thứ tự điểm dừng
+    private List<ShipmentStop> stops;
 
     // Thông tin tài xế (nhập tay)
     private String driverName;
@@ -49,12 +50,14 @@ public class Shipment {
     private String vehicleInfo;          // Biển số xe, loại xe
 
     private BigDecimal shippingFee;
+    private Double distance;
+    private Integer duration;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ShipmentStatus status;
 
-    private String note;                  // Ghi chú của coordinator
+    private String remarks;                  // Ghi chú của coordinator
 
     // Ai tạo shipment
     @ManyToOne(fetch = FetchType.LAZY)

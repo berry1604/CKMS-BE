@@ -40,8 +40,8 @@ public class StoreOrder {
     private ProductionPlan productionPlan;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "shipment_id")
-    private Shipment shipment;
+    @JoinColumn(name = "shipment_stop_id")
+    private ShipmentStop shipmentStop;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id")
@@ -68,4 +68,7 @@ public class StoreOrder {
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderDetail> orderDetails;
+    public Shipment getShipment() {
+        return shipmentStop != null ? shipmentStop.getShipment() : null;
+    }
 }

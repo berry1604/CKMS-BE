@@ -15,15 +15,19 @@ import java.util.List;
 @AllArgsConstructor
 public class ShipmentResponse {
     private Long shipmentId;
-    private Long storeId;
-    private String storeName;
+    private List<StopResponse> stops;
     private Long productionPlanId;
     private String status;
+
+    private String ahamoveOrderId;
+    private String trackingLink;
+    private String ahamoveStatus;
+
     private String driverName;
     private String driverPhone;
     private String vehicleInfo;
     private BigDecimal shippingFee;
-    private String note;
+    private String remarks;
     private Long createdByUserId;
     private String createdByUsername;
     private Long confirmedByUserId;
@@ -32,4 +36,17 @@ public class ShipmentResponse {
     private LocalDateTime shippedAt;
     private LocalDateTime deliveredAt;
     private List<Long> storeOrderIds;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StopResponse {
+        private Long stopId;
+        private Integer stopOrder;
+        private Long storeId;
+        private String storeName;
+        private String remarks;
+        private List<Long> storeOrderIds;
+    }
 }

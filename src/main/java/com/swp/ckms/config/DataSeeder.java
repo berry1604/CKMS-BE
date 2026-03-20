@@ -185,9 +185,12 @@ public class DataSeeder implements CommandLineRunner {
         // 1. Seed Bếp Trung Tâm và Kho Bếp (ID = 1)
         if (!centralKitchenRepository.existsById(1L)) {
             CentralKitchen kitchen = centralKitchenRepository.save(CentralKitchen.builder()
-                    .name("Hệ thống Bếp Trung tâm")
-                    .address("123 Láng Hạ, Đống Đa, Hà Nội")
-                    .maxDailyCapacity(java.math.BigDecimal.valueOf(300))
+                    .name("CKMS - Central Kitchen")
+                    .address("117 Nguyễn Du, Phường Bến Thành, Quận 1, Thành phố Hồ Chí Minh")
+                    .maxDailyCapacity(java.math.BigDecimal.valueOf(10000))
+                    .latitude(10.7756)
+                    .longitude(106.6964)
+                    .phone("84945751684")
                     .build());
             System.out.println(">>> Seeded default Central Kitchen");
 
@@ -204,9 +207,11 @@ public class DataSeeder implements CommandLineRunner {
         if (!franchiseStoreRepository.existsById(1L)) {
             FranchiseStore store = franchiseStoreRepository.save(FranchiseStore.builder()
                     .name("Cửa Hàng Mẫu CKMS")
-                    .address("Số 1 Mạc Đĩnh Chi")
-                    .phoneNumber("0987654321")
+                    .address("Số 1 Mạc Đĩnh Chi, Phường Đa Kao, Quận 1, Thành phố Hồ Chí Minh")
                     .paymentCycle("MONTHLY")
+                    .phone("84377774968")
+                    .latitude("10.782140")
+                    .longitude("106.701484")
                     .build());
             System.out.println(">>> Seeded default Franchise Store");
 
