@@ -32,10 +32,6 @@ public class Shipment {
     private String ahamoveStatus;
     @Column(name = "ahamove_service_id")
     private String ahamoveServiceId;
-    // Shipment giao cho cửa hàng nào
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "store_id", nullable = true)
-    private FranchiseStore store;
 
     // Shipment thuộc production plan nào
     @ManyToOne(fetch = FetchType.LAZY)

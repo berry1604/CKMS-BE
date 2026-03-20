@@ -13,8 +13,11 @@ import com.swp.ckms.entity.BillingStatement;
 import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.Invoice;
 import com.swp.ckms.entity.PaymentMethod;
+import com.swp.ckms.entity.Shipment;
+import com.swp.ckms.entity.StoreOrder;
 import com.swp.ckms.enums.BillingStatementStatus;
 import com.swp.ckms.enums.InvoiceStatus;
+import com.swp.ckms.enums.ShipmentStatus;
 import com.swp.ckms.exception.business.DuplicateResourceException;
 import com.swp.ckms.exception.business.ForbiddenException;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
@@ -53,6 +56,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     private final FranchiseStoreRepository franchiseStoreRepository;
     private final PaymentMethodRepository paymentMethodRepository;
     private final com.swp.ckms.repository.ShipmentRepository shipmentRepository;
+    private final com.swp.ckms.repository.StoreOrderRepository storeOrderRepository;
     private final PaymentGateway paymentGateway;
     private final com.swp.ckms.service.NotificationService notificationService;
     private final com.swp.ckms.util.RecipientResolver recipientResolver;
@@ -83,13 +87,9 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 .map(Invoice::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Fetch shipments for shipping fees
-        List<com.swp.ckms.entity.Shipment> shipments = shipmentRepository.findAllByStore_StoreIdAndStatusAndDeliveredAtBetween(
-                storeId, com.swp.ckms.enums.ShipmentStatus.DELIVERED, startDateTime, endDateTime);
-
-        BigDecimal shippingTotal = shipments.stream()
-                .map(s -> s.getShippingFee() != null ? s.getShippingFee() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<Shipment> shipments = shipmentRepository.findDistinctByStops_Store_StoreIdAndStatusAndDeliveredAtBetween(
+            storeId, ShipmentStatus.DELIVERED, startDateTime, endDateTime);
+        BigDecimal shippingTotal = calculateAllocatedShippingTotal(shipments, storeId);
 
         BigDecimal totalAmount = orderTotal.add(shippingTotal);
 
@@ -200,13 +200,9 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                         .map(Invoice::getAmount)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                // Fetch shipments for shipping fees
-                List<com.swp.ckms.entity.Shipment> shipments = shipmentRepository.findAllByStore_StoreIdAndStatusAndDeliveredAtBetween(
-                        storeId, com.swp.ckms.enums.ShipmentStatus.DELIVERED, startDateTime, endDateTime);
-
-                BigDecimal shippingTotal = shipments.stream()
-                        .map(s -> s.getShippingFee() != null ? s.getShippingFee() : BigDecimal.ZERO)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                List<Shipment> shipments = shipmentRepository.findDistinctByStops_Store_StoreIdAndStatusAndDeliveredAtBetween(
+                    storeId, ShipmentStatus.DELIVERED, startDateTime, endDateTime);
+                BigDecimal shippingTotal = calculateAllocatedShippingTotal(shipments, storeId);
 
                 BigDecimal totalAmount = orderTotal.add(shippingTotal);
 
@@ -426,6 +422,61 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 statement.getTotalAmount(),
                 clientIp
         );
+    }
+
+    private BigDecimal calculateAllocatedShippingTotal(List<Shipment> shipments, Long storeId) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (Shipment shipment : shipments) {
+            BigDecimal allocated = allocateShipmentFeeForStore(shipment, storeId);
+            total = total.add(allocated);
+        }
+        return total;
+    }
+
+    private BigDecimal allocateShipmentFeeForStore(Shipment shipment, Long storeId) {
+        if (shipment.getShippingFee() == null || shipment.getShippingFee().compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        List<StoreOrder> shipmentOrders = storeOrderRepository.findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
+
+        BigDecimal shipmentOrderValue = shipmentOrders.stream()
+                .map(this::resolveOrderValue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (shipmentOrderValue.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal storeOrderValue = shipmentOrders.stream()
+                .filter(order -> order.getStore() != null && storeId.equals(order.getStore().getStoreId()))
+                .map(this::resolveOrderValue)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (storeOrderValue.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        return shipment.getShippingFee()
+                .multiply(storeOrderValue)
+                .divide(shipmentOrderValue, 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal resolveOrderValue(StoreOrder order) {
+        if (order == null) {
+            return BigDecimal.ZERO;
+        }
+        if (order.getTotalAmount() != null && order.getTotalAmount().compareTo(BigDecimal.ZERO) > 0) {
+            return order.getTotalAmount();
+        }
+        if (order.getInvoice() != null && order.getInvoice().getAmount() != null
+                && order.getInvoice().getAmount().compareTo(BigDecimal.ZERO) > 0) {
+            return order.getInvoice().getAmount();
+        }
+        if (order.getOrderFee() != null && order.getOrderFee().compareTo(BigDecimal.ZERO) > 0) {
+            return order.getOrderFee();
+        }
+        return BigDecimal.ZERO;
     }
     @Override
     @Transactional

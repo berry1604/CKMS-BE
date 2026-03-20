@@ -15,8 +15,7 @@ import java.util.List;
 @AllArgsConstructor
 public class ShipmentResponse {
     private Long shipmentId;
-    private Long storeId;
-    private String storeName;
+    private List<StopResponse> stops;
     private Long productionPlanId;
     private String status;
 
@@ -37,4 +36,17 @@ public class ShipmentResponse {
     private LocalDateTime shippedAt;
     private LocalDateTime deliveredAt;
     private List<Long> storeOrderIds;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StopResponse {
+        private Long stopId;
+        private Integer stopOrder;
+        private Long storeId;
+        private String storeName;
+        private String remarks;
+        private List<Long> storeOrderIds;
+    }
 }
