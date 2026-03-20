@@ -114,7 +114,7 @@ public class DataSeeder implements CommandLineRunner {
                 .filter(p -> coordinatorCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role coordinatorRole = seedRole("COORDINATOR", coordinatorPrivileges);
-        seedUser("coordinator", "coordinator@ckms.com", "coordinator", "Supply Coordinator", coordinatorRole, null, defaultKitchen);
+        seedUser("coordinator", "coordinator@ckms.com", "coordinator", "Supply Coordinator", coordinatorRole, null, null);
 
         // 4. KITCHEN_STAFF - Execution: Sản xuất & Kho bếp
         Set<String> kitchenCodes = new HashSet<>(Arrays.asList(

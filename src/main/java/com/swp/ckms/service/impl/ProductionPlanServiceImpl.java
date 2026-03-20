@@ -515,6 +515,9 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         }
 
         for (ProductionOutputRequest outputReq : request.getOutputs()) {
+            if (outputReq.getActualQty() == null) {
+                throw new IllegalArgumentException("Actual quantity for product ID " + outputReq.getProductId() + " cannot be null");
+            }
             Product product = Product.builder().id(outputReq.getProductId()).build();
             
             // Record to ProductionOutput entity
