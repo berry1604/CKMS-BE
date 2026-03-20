@@ -18,4 +18,6 @@ public class ProductionPlanRequest {
 
     @NotNull(message = "Ngày kế hoạch không được để trống")
     private java.time.LocalDate plannedDate;
+
+    private Long kitchenId;
 }

@@ -95,4 +95,32 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     List<StoreOrder> findUnassignedApprovedOrders(
             @Param("kitchenId") Long kitchenId, 
             @Param("deliveryDate") java.time.LocalDate deliveryDate);
+
+    @Query("""
+        SELECT SUM(od.quantity) 
+        FROM StoreOrder o 
+        JOIN o.orderDetails od 
+        WHERE o.deliveryDate = :deliveryDate 
+        AND o.status IN (
+            com.swp.ckms.enums.OrderStatus.APPROVED,
+            com.swp.ckms.enums.OrderStatus.SCHEDULED,
+            com.swp.ckms.enums.OrderStatus.LOCKED,
+            com.swp.ckms.enums.OrderStatus.ALLOCATED,
+            com.swp.ckms.enums.OrderStatus.IN_TRANSIT,
+            com.swp.ckms.enums.OrderStatus.DELIVERED,
+            com.swp.ckms.enums.OrderStatus.CONFIRMED
+        )
+    """)
+    java.math.BigDecimal sumTotalQuantityByDeliveryDate(
+            @Param("deliveryDate") java.time.LocalDate deliveryDate);
+
+    @Query("""
+        SELECT o FROM StoreOrder o 
+        WHERE o.deliveryDate = :deliveryDate
+        AND o.status = com.swp.ckms.enums.OrderStatus.APPROVED
+        AND o.productionPlan IS NULL
+        ORDER BY o.deliveryDate ASC, o.totalAmount DESC, o.orderDate ASC
+    """)
+    List<StoreOrder> findAllUnassignedApprovedOrders(
+            @Param("deliveryDate") java.time.LocalDate deliveryDate);
 }
