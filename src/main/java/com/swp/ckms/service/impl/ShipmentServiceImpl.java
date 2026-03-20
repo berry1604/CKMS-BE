@@ -265,8 +265,10 @@ public class ShipmentServiceImpl implements ShipmentService {
     public ShipmentResponse cancelShipment(Long shipmentId, String reason) {
         Shipment shipment = getShipmentOrThrow(shipmentId);
 
-        if (shipment.getStatus() == ShipmentStatus.DELIVERED) {
-            throw new IllegalStateException("Cannot cancel a DELIVERED shipment");
+        if (shipment.getStatus() == ShipmentStatus.DELIVERED
+                || shipment.getStatus() == ShipmentStatus.RETURNED
+                || shipment.getStatus() == ShipmentStatus.DELIVERY_FAILED) {
+            throw new IllegalStateException("Cannot cancel a completed shipment. Current: " + shipment.getStatus());
         }
         // Hủy đơn trên AhaMove nếu đã tạo
         ahamoveShipmentService.cancelAhamoveOrder(shipment, reason); 

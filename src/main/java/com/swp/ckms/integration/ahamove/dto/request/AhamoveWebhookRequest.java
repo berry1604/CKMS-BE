@@ -3,6 +3,7 @@ package com.swp.ckms.integration.ahamove.dto.request;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import java.util.List;
 /**
  * AhaMove gửi webhook về endpoint của chúng ta khi trạng thái đơn thay đổi.
  * Các status: ASSIGNING, ACCEPTED, IN PROCESS, COMPLETED, CANCELLED, FAILED
@@ -16,6 +17,11 @@ public class AhamoveWebhookRequest {
 
     // Trạng thái mới từ AhaMove
     private String status;
+
+    @JsonProperty("sub_status")
+    private String subStatus;
+
+    private List<AhamovePathPoint> path;
 
     // Thông tin tài xế được gán
     @JsonProperty("supplier_id")
@@ -33,4 +39,10 @@ public class AhamoveWebhookRequest {
     // // Timestamp
     // @JsonProperty("_id")
     // private String requestId;
+
+    @Data
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class AhamovePathPoint {
+        private String status;
+    }
 }

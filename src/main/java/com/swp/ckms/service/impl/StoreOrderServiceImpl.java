@@ -488,6 +488,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
         if (order.getStatus() == OrderStatus.LOCKED || order.getStatus() == OrderStatus.ALLOCATED || 
             order.getStatus() == OrderStatus.IN_TRANSIT || order.getStatus() == OrderStatus.DELIVERED || 
+            order.getStatus() == OrderStatus.DELIVERY_FAILED || order.getStatus() == OrderStatus.RETURNED ||
             order.getStatus() == OrderStatus.CONFIRMED) {
             throw new BusinessRuleViolationException("Cannot reschedule order in current state: " + order.getStatus());
         }
