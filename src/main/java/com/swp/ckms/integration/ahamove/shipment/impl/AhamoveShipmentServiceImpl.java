@@ -14,6 +14,7 @@ import com.swp.ckms.entity.ShipmentStop;
 import com.swp.ckms.repository.CentralKitchenRepository;
 import com.swp.ckms.entity.Shipment;
 import com.swp.ckms.entity.StoreOrder;
+import com.swp.ckms.enums.OrderStatus;
 import com.swp.ckms.enums.ShipmentStatus;
 import com.swp.ckms.repository.ShipmentRepository;
 import com.swp.ckms.repository.StoreOrderRepository;
@@ -21,7 +22,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.annotation.Propagation;
 import java.util.Optional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -29,7 +29,6 @@ import java.util.ArrayList;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -97,8 +96,9 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
 
     @Override
     public ShipmentStatus mapAhamoveStatus(String ahamoveStatus) {
-        if (ahamoveStatus == null) return null;
-        return switch (ahamoveStatus.toUpperCase()) {
+        String normalizedStatus = normalizeAhamoveStatus(ahamoveStatus);
+        if (normalizedStatus == null) return null;
+        return switch (normalizedStatus) {
             case "ASSIGNING",
                  "ACCEPTED",
                  "IN PROCESS" -> ShipmentStatus.IN_TRANSIT;
@@ -110,6 +110,30 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                 yield null;
             }
         };
+    }
+
+    private OrderStatus mapAhamoveOrderStatus(String ahamoveStatus) {
+        String normalizedStatus = normalizeAhamoveStatus(ahamoveStatus);
+        if (normalizedStatus == null) return null;
+        return switch (normalizedStatus) {
+            case "ASSIGNING",
+                 "ACCEPTED",
+                 "IN PROCESS" -> OrderStatus.IN_TRANSIT;
+            case "COMPLETED"  -> OrderStatus.DELIVERED;
+            case "CANCELLED",
+                 "FAILED"     -> OrderStatus.CANCELLED;
+            default -> {
+                log.warn("Không map được Ahamove status cho order: {}", ahamoveStatus);
+                yield null;
+            }
+        };
+    }
+
+    private String normalizeAhamoveStatus(String ahamoveStatus) {
+        if (ahamoveStatus == null) {
+            return null;
+        }
+        return ahamoveStatus.trim().toUpperCase().replace('_', ' ');
     }
 
     @Override
@@ -131,6 +155,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
             shipment.setDriverPhone(request.getSupplierMobile());
         }
         ShipmentStatus newStatus = mapAhamoveStatus(request.getStatus());
+        OrderStatus newOrderStatus = mapAhamoveOrderStatus(request.getStatus());
 
         if (newStatus != null && newStatus != shipment.getStatus()) {
                 log.info("Shipment #{} cập nhật status: {} -> {}",
@@ -142,6 +167,25 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                 } else if (newStatus == ShipmentStatus.CANCELLED) {
                 shipment.setCancelledAt(LocalDateTime.now());
                 }
+        }
+
+        if (newOrderStatus != null) {
+            List<StoreOrder> orders = storeOrderRepository
+                    .findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
+
+            int changedCount = 0;
+            for (StoreOrder order : orders) {
+                if (order.getStatus() != newOrderStatus) {
+                    order.setStatus(newOrderStatus);
+                    changedCount++;
+                }
+            }
+
+            if (changedCount > 0) {
+                storeOrderRepository.saveAll(orders);
+                log.info("Shipment #{} reconcile {} order(s) -> {} từ webhook status '{}'",
+                        shipment.getShipmentId(), changedCount, newOrderStatus, request.getStatus());
+            }
         }
 
         shipmentRepository.save(shipment);
