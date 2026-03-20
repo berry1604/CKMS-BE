@@ -11,6 +11,7 @@ import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.CentralKitchen;
 import com.swp.ckms.entity.OrderDetail;
 import com.swp.ckms.entity.ShipmentStop;
+import com.swp.ckms.repository.CentralKitchenRepository;
 import com.swp.ckms.entity.Shipment;
 import com.swp.ckms.entity.StoreOrder;
 import com.swp.ckms.enums.OrderStatus;
@@ -38,10 +39,11 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
     private final AhamoveService ahamoveService;
     private final ShipmentRepository shipmentRepository;
     private final StoreOrderRepository storeOrderRepository;
+    private final CentralKitchenRepository centralKitchenRepository;
 
     @Override
 //     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
-@Transactional
+    @Transactional
     public void dispatchToAhamove(Shipment shipment) {
         log.info("Gửi shipment #{} lên Ahamove", shipment.getShipmentId());
 
@@ -101,10 +103,8 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                  "ACCEPTED",
                  "IN PROCESS" -> ShipmentStatus.IN_TRANSIT;
             case "COMPLETED"  -> ShipmentStatus.DELIVERED;
-              case "CANCELLED"  -> ShipmentStatus.CANCELLED;
-              case "FAILED",
-                  "DELIVERY FAILED" -> ShipmentStatus.DELIVERY_FAILED;
-              case "RETURNED" -> ShipmentStatus.RETURNED;
+            case "CANCELLED",
+                 "FAILED"     -> ShipmentStatus.CANCELLED;
             default -> {
                 log.warn("Không nhận ra Ahamove status: {}", ahamoveStatus);
                 yield null;
@@ -120,10 +120,8 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                  "ACCEPTED",
                  "IN PROCESS" -> OrderStatus.IN_TRANSIT;
             case "COMPLETED"  -> OrderStatus.DELIVERED;
-              case "CANCELLED"  -> OrderStatus.CANCELLED;
-              case "FAILED",
-                  "DELIVERY FAILED" -> OrderStatus.DELIVERY_FAILED;
-              case "RETURNED" -> OrderStatus.RETURNED;
+            case "CANCELLED",
+                 "FAILED"     -> OrderStatus.CANCELLED;
             default -> {
                 log.warn("Không map được Ahamove status cho order: {}", ahamoveStatus);
                 yield null;
@@ -138,42 +136,6 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
         return ahamoveStatus.trim().toUpperCase().replace('_', ' ');
     }
 
-    private String resolveEffectiveAhamoveStatus(AhamoveWebhookRequest request) {
-        String normalizedStatus = normalizeAhamoveStatus(request.getStatus());
-        if (normalizedStatus == null) {
-            return null;
-        }
-
-        if (!"COMPLETED".equals(normalizedStatus)) {
-            return normalizedStatus;
-        }
-
-        String normalizedSubStatus = normalizeAhamoveStatus(request.getSubStatus());
-        if ("RETURNED".equals(normalizedSubStatus)) {
-            return "RETURNED";
-        }
-        if ("IN RETURN".equals(normalizedSubStatus) || hasFailedDropoff(request)) {
-            return "DELIVERY FAILED";
-        }
-
-        return "COMPLETED";
-    }
-
-    private boolean hasFailedDropoff(AhamoveWebhookRequest request) {
-        if (request.getPath() == null || request.getPath().size() <= 1) {
-            return false;
-        }
-
-        for (int i = 1; i < request.getPath().size(); i++) {
-            AhamoveWebhookRequest.AhamovePathPoint point = request.getPath().get(i);
-            String normalizedPointStatus = normalizeAhamoveStatus(point != null ? point.getStatus() : null);
-            if ("FAILED".equals(normalizedPointStatus)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     @Override
     @Transactional
     public boolean handleWebhookUpdate(AhamoveWebhookRequest request) {
@@ -185,16 +147,15 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
             return false;
         }
         Shipment shipment = optShipment.get();
-        String effectiveAhamoveStatus = resolveEffectiveAhamoveStatus(request);
-        shipment.setAhamoveStatus(effectiveAhamoveStatus != null ? effectiveAhamoveStatus : request.getStatus());
+        shipment.setAhamoveStatus(request.getStatus());
         if(request.getSupplierName() != null && !request.getSupplierName().isEmpty()) {
             shipment.setDriverName(request.getSupplierName());
         }
         if(request.getSupplierMobile() != null && !request.getSupplierMobile().isEmpty()) {
             shipment.setDriverPhone(request.getSupplierMobile());
         }
-        ShipmentStatus newStatus = mapAhamoveStatus(effectiveAhamoveStatus);
-        OrderStatus newOrderStatus = mapAhamoveOrderStatus(effectiveAhamoveStatus);
+        ShipmentStatus newStatus = mapAhamoveStatus(request.getStatus());
+        OrderStatus newOrderStatus = mapAhamoveOrderStatus(request.getStatus());
 
         if (newStatus != null && newStatus != shipment.getStatus()) {
                 log.info("Shipment #{} cập nhật status: {} -> {}",
@@ -202,11 +163,9 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                 shipment.setStatus(newStatus);
 
                 if (newStatus == ShipmentStatus.DELIVERED) {
-                    shipment.setDeliveredAt(LocalDateTime.now());
-                } else if (newStatus == ShipmentStatus.CANCELLED
-                        || newStatus == ShipmentStatus.DELIVERY_FAILED
-                        || newStatus == ShipmentStatus.RETURNED) {
-                    shipment.setCancelledAt(LocalDateTime.now());
+                shipment.setDeliveredAt(LocalDateTime.now());
+                } else if (newStatus == ShipmentStatus.CANCELLED) {
+                shipment.setCancelledAt(LocalDateTime.now());
                 }
         }
 
@@ -224,8 +183,8 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
 
             if (changedCount > 0) {
                 storeOrderRepository.saveAll(orders);
-                log.info("Shipment #{} reconcile {} order(s) -> {} từ webhook status='{}', subStatus='{}'",
-                        shipment.getShipmentId(), changedCount, newOrderStatus, request.getStatus(), request.getSubStatus());
+                log.info("Shipment #{} reconcile {} order(s) -> {} từ webhook status '{}'",
+                        shipment.getShipmentId(), changedCount, newOrderStatus, request.getStatus());
             }
         }
 
