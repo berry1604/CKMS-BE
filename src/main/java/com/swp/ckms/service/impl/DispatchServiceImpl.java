@@ -49,8 +49,8 @@ public class DispatchServiceImpl implements DispatchService {
         }
         if (remainingKitchenCapacity.compareTo(BigDecimal.ZERO) < 0) remainingKitchenCapacity = BigDecimal.ZERO;
 
-        // 2. Fetch Order Pool (Unassigned APPROVED orders)
-        List<StoreOrder> orderPool = storeOrderRepository.findUnassignedApprovedOrders(kitchenId, targetDate);
+        // 2. Fetch Order Pool (Pull Model: Any kitchen can see any unassigned APPROVED orders)
+        List<StoreOrder> orderPool = storeOrderRepository.findAllUnassignedApprovedOrders(targetDate);
         
         // 3. Group by Product
         Map<Product, List<StoreOrder>> ordersByProduct = new HashMap<>();

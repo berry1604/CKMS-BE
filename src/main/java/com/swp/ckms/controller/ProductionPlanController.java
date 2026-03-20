@@ -35,7 +35,7 @@ public class ProductionPlanController {
     }
 
     @PutMapping("/{id}/ready")
-    @PreAuthorize("hasAuthority('ORGANIZE_PRODUCTION')")
+    @PreAuthorize("hasAuthority('EXECUTE_PRODUCTION')")
     public ResponseEntity<ProductionPlanResponse> readyProductionPlan(@PathVariable Long id) {
         ProductionPlanResponse response = productionPlanService.checkAndReadyPlan(id);
         return ResponseEntity.ok(response);

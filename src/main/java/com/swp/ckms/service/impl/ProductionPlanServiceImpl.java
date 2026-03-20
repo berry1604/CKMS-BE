@@ -62,9 +62,30 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         User currentUser = userRepository.findById(ctx.getUserId())
                 .orElseThrow(() -> new AccessDeniedException("User not found in system"));
 
-        CentralKitchen kitchen = currentUser.getKitchen();
-        if (kitchen == null || kitchen.getKitchenId() == null) {
-            throw new AccessDeniedException("User does not belong to any Central Kitchen and cannot create a Production Plan.");
+        CentralKitchen kitchen;
+        if (request.getKitchenId() != null) {
+            // Priority 1: Use kitchenId from request (HQ or flexible mode)
+            kitchen = kitchenRepository.findById(request.getKitchenId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Kitchen not found with ID: " + request.getKitchenId()));
+            
+            // Security Check: Only HQ or ADMIN can pick a DIFFERENT kitchen than their assigned one
+            if (!ctx.getUserId().equals(1L)) { // Simplified: ID 1 is Super Admin
+                if (currentUser.getKitchen() != null && 
+                    !currentUser.getKitchen().getKitchenId().equals(kitchen.getKitchenId())) {
+                    // Check if they have MANAGER role/privilege
+                    boolean isHq = currentUser.getRole().getRoleName().equals("ADMIN") || 
+                                   currentUser.getRole().getRoleName().equals("MANAGER");
+                    if (!isHq) {
+                        throw new AccessDeniedException("You don't have permission to create a plan for another kitchen.");
+                    }
+                }
+            }
+        } else {
+            // Priority 2: Fallback to user's assigned kitchen
+            kitchen = currentUser.getKitchen();
+            if (kitchen == null || kitchen.getKitchenId() == null) {
+                throw new AccessDeniedException("User does not belong to any Central Kitchen. Please provide kitchenId in request.");
+            }
         }
 
         List<Long> orderIds = request.getStoreOrderIds();

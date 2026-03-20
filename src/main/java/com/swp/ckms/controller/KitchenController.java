@@ -26,13 +26,13 @@ public class KitchenController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('MANAGE_KITCHEN_CONFIG')")
+    @PreAuthorize("hasAuthority('VIEW_KITCHEN') or hasAuthority('MANAGE_KITCHEN_CONFIG')")
     public ApiResponse<List<KitchenResponse>> getAllKitchens() {
         return ApiResponse.success(kitchenService.getAllKitchens());
     }
 
     @GetMapping("/{kitchenId}")
-    @PreAuthorize("hasAuthority('MANAGE_KITCHEN_CONFIG')")
+    @PreAuthorize("hasAuthority('VIEW_KITCHEN') or hasAuthority('MANAGE_KITCHEN_CONFIG')")
     public ApiResponse<KitchenResponse> getKitchenById(@PathVariable Long kitchenId) {
         return ApiResponse.success(kitchenService.getKitchenById(kitchenId));
     }

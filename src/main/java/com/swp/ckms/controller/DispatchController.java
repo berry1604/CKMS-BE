@@ -25,7 +25,7 @@ public class DispatchController {
     private final CentralKitchenRepository kitchenRepository;
 
     @GetMapping("/suggest")
-    @PreAuthorize("hasAuthority('PRODUCTION_PLAN_CREATE')")
+    @PreAuthorize("hasAuthority('CREATE_PRODUCTION_PLAN') or hasAuthority('ORGANIZE_PRODUCTION')")
     public ApiResponse<DispatchSuggestionResponse> getDispatchSuggestion(
             @RequestParam(required = false) Long kitchenId,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate targetDate) {

@@ -53,15 +53,13 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
     private final StoreOrderRepository storeOrderRepository;
     private final UserRepository userRepository;
-    private final FranchiseStoreRepository franchiseStoreRepository;
     private final ProductRepository productRepository;
+    private final FranchiseStoreRepository franchiseStoreRepository;
     private final InvoiceRepository invoiceRepository;
-    private final StoreWarehouseRepository storeWarehouseRepository;
-    private final StoreStockItemRepository storeStockItemRepository;
     private final AllocationItemRepository allocationItemRepository;
     private final com.swp.ckms.service.NotificationService notificationService;
     private final com.swp.ckms.util.RecipientResolver recipientResolver;
-    private final CentralKitchenRepository kitchenRepository;
+    private final CentralKitchenRepository centralKitchenRepository;
 
     @Override
     public StoreOrderResponse createOrder(StoreOrderRequest request, String username) {
@@ -302,23 +300,42 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             User approvedBy = userRepository.findById(ctx.getUserId())
                     .orElseThrow(() -> new ResourceNotFoundException("Approver not found"));
 
-            // [Phase 2] Kitchen Capacity Guard (Refined: Coordinator-based)
+            // [Phase 2] Kitchen Capacity Guard (Refined: Global if no specific kitchen)
             CentralKitchen kitchen = approvedBy.getKitchen();
-            if (kitchen != null && kitchen.getMaxDailyCapacity() != null) {
-                java.math.BigDecimal existingLoad = storeOrderRepository.sumQuantityByKitchenAndDeliveryDate(
-                        kitchen.getKitchenId(), order.getDeliveryDate());
-                if (existingLoad == null) existingLoad = java.math.BigDecimal.ZERO;
+            if (kitchen != null) {
+                // Kitchen-specific check for local coordinators
+                if (kitchen.getMaxDailyCapacity() != null) {
+                    java.math.BigDecimal existingLoad = storeOrderRepository.sumQuantityByKitchenAndDeliveryDate(
+                            kitchen.getKitchenId(), order.getDeliveryDate());
+                    if (existingLoad == null) existingLoad = java.math.BigDecimal.ZERO;
+
+                    java.math.BigDecimal newOrderLoad = java.math.BigDecimal.valueOf(
+                            order.getOrderDetails().stream().mapToDouble(d -> d.getQuantity()).sum());
+
+                    if (existingLoad.add(newOrderLoad).compareTo(kitchen.getMaxDailyCapacity()) > 0) {
+                        throw new com.swp.ckms.exception.business.BusinessRuleViolationException(String.format(
+                                "Duyệt đơn thất bại: Tổng tải sản xuất ngày %s vượt quá công suất bếp %s (Hệ thống đã nhận: %s, Đơn này: %s)",
+                                order.getDeliveryDate(), kitchen.getMaxDailyCapacity(), existingLoad, newOrderLoad));
+                    }
+                }
+            } else {
+                // Global check for HQ users (no assigned kitchen)
+                java.math.BigDecimal totalCapacity = centralKitchenRepository.sumTotalMaxDailyCapacity();
+                if (totalCapacity == null) totalCapacity = java.math.BigDecimal.ZERO;
+
+                java.math.BigDecimal globalLoad = storeOrderRepository.sumTotalQuantityByDeliveryDate(order.getDeliveryDate());
+                if (globalLoad == null) globalLoad = java.math.BigDecimal.ZERO;
 
                 java.math.BigDecimal newOrderLoad = java.math.BigDecimal.valueOf(
                         order.getOrderDetails().stream().mapToDouble(d -> d.getQuantity()).sum());
 
-                if (existingLoad.add(newOrderLoad).compareTo(kitchen.getMaxDailyCapacity()) > 0) {
+                if (globalLoad.add(newOrderLoad).compareTo(totalCapacity) > 0) {
                     throw new com.swp.ckms.exception.business.BusinessRuleViolationException(String.format(
-                            "Duyệt đơn thất bại: Tổng tải sản xuất ngày %s vượt quá công suất bếp %s (Hệ thống đã nhận: %s, Đơn này: %s)",
-                            order.getDeliveryDate(), kitchen.getMaxDailyCapacity(), existingLoad, newOrderLoad));
+                            "Duyệt đơn thất bại: Tổng tải toàn hệ thống ngày %s (%s) đã chạm giới hạn công suất tổng (%s).",
+                            order.getDeliveryDate(), globalLoad.add(newOrderLoad), totalCapacity));
                 }
-            } else {
-                log.info("Skipping capacity guard Check: Kitchen or maxDailyCapacity is not set for coordinator: {}", approvedBy.getUsername());
+                log.info("HQ Approval: Global capacity check passed. Total: {}, Used: {}, New: {}", 
+                        totalCapacity, globalLoad, newOrderLoad);
             }
 
             order.setStatus(OrderStatus.APPROVED); // Duyệt đơn là đưa vào hàng chờ Scheduled
@@ -474,7 +491,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         // --- TRIGGER NOTIFICATION ---
         try {
             // Since stores are independent, we notify all coordinators of all active kitchens
-            List<CentralKitchen> allKitchens = kitchenRepository.findAll();
+            List<CentralKitchen> allKitchens = centralKitchenRepository.findAll();
             for (CentralKitchen k : allKitchens) {
                 String recipient = recipientResolver.resolveCoordinatorEmail(k.getKitchenId());
                 if (recipient != null) {
