@@ -37,6 +37,7 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
         FranchiseStore store = FranchiseStore.builder()
                 .name(request.getName())
                 .address(request.getAddress())
+                .phoneNumber(request.getPhoneNumber())
                 .paymentCycle(request.getPaymentCycle() != null ? request.getPaymentCycle() : "MONTHLY")
                 .build();
 
@@ -57,8 +58,9 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
                 .storeId(store.getStoreId())
                 .name(store.getName())
                 .address(store.getAddress())
+                .phoneNumber(store.getPhoneNumber())
                 .paymentCycle(store.getPaymentCycle())
-                .warehouseId(warehouse.getWarehouseId())
+                .warehouseId(warehouse != null ? warehouse.getWarehouseId() : null)
                 .build();
     }
 
@@ -122,6 +124,7 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
         //Update thông tin store
         store.setName(request.getName());
         store.setAddress(request.getAddress());
+        store.setPhoneNumber(request.getPhoneNumber());
         store.setPaymentCycle(
                 request.getPaymentCycle() != null
                         ? request.getPaymentCycle()

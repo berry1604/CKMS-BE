@@ -18,5 +18,7 @@ public class StoreUpdateRequest {
     private String address;
 
     private String paymentCycle;
+    
+    private String phoneNumber;
 
 }

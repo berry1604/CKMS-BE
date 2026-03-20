@@ -4,9 +4,7 @@ import com.swp.ckms.entity.Privilege;
 import com.swp.ckms.entity.Role;
 import com.swp.ckms.entity.User;
 import com.swp.ckms.enums.AppPrivilege;
-import com.swp.ckms.repository.PrivilegeRepository;
-import com.swp.ckms.repository.RoleRepository;
-import com.swp.ckms.repository.UserRepository;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -17,14 +15,15 @@ import com.swp.ckms.entity.CentralKitchen;
 import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.KitchenWarehouse;
 import com.swp.ckms.entity.StoreWarehouse;
-import com.swp.ckms.repository.CentralKitchenRepository;
-import com.swp.ckms.repository.FranchiseStoreRepository;
-import com.swp.ckms.repository.KitchenWarehouseRepository;
-import com.swp.ckms.repository.PrivilegeRepository;
-import com.swp.ckms.repository.RoleRepository;
-import com.swp.ckms.repository.StoreWarehouseRepository;
-import com.swp.ckms.repository.PaymentMethodRepository;
 import com.swp.ckms.entity.PaymentMethod;
+import com.swp.ckms.entity.Material;
+import com.swp.ckms.entity.Product;
+import com.swp.ckms.entity.Category;
+import com.swp.ckms.entity.Recipe;
+import com.swp.ckms.entity.RecipeDetail;
+import com.swp.ckms.entity.KitchenStockItem;
+import com.swp.ckms.enums.UnitType;
+import com.swp.ckms.repository.*;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -45,6 +44,12 @@ public class DataSeeder implements CommandLineRunner {
     private final FranchiseStoreRepository franchiseStoreRepository;
     private final StoreWarehouseRepository storeWarehouseRepository;
     private final PaymentMethodRepository paymentMethodRepository;
+    private final MaterialRepository materialRepository;
+    private final ProductRepository productRepository;
+    private final CategoryRepository categoryRepository;
+    private final RecipeRepository recipeRepository;
+    private final RecipeDetailRepository recipeDetailRepository;
+    private final KitchenStockItemRepository kitchenStockItemRepository;
 
     @Override
     @Transactional
@@ -58,6 +63,7 @@ public class DataSeeder implements CommandLineRunner {
         seedUsersAndRoles(allPrivileges);
 
         seedPaymentMethods();
+        seedBusinessData();
     }
 
     private Set<Privilege> seedPrivileges() {
@@ -88,7 +94,7 @@ public class DataSeeder implements CommandLineRunner {
                 "VIEW_KITCHEN_INVENTORY", "VIEW_STORE_INVENTORY",
                 "VIEW_BILLING", "VIEW_INVOICE", "VIEW_REPORTS", "VIEW_DASHBOARD",
                 "VIEW_STORE_ORDER", "APPROVE_STORE_ORDER", "MANAGE_STORES",
-                "PAY_BILLING", "CONFIRM_PAYMENT", "MANAGE_KITCHEN_CONFIG"
+                "PAY_BILLING", "CONFIRM_PAYMENT", "MANAGE_KITCHEN_CONFIG", "VIEW_KITCHEN"
         ));
         Set<Privilege> managerPrivileges = allPrivileges.stream()
                 .filter(p -> managerCodes.contains(p.getCode()))
@@ -102,19 +108,20 @@ public class DataSeeder implements CommandLineRunner {
                 "ORGANIZE_PRODUCTION", "CREATE_PRODUCTION_PLAN", "VIEW_PRODUCTION_PLAN", "UPDATE_PRODUCTION_PLAN",
                 "CREATE_SHIPMENT", "START_SHIPMENT", "CANCEL_SHIPMENT", "VIEW_SHIPMENT", "PREPARE_SHIPMENT",
                 "VIEW_INVOICE", "VIEW_BILLING", "VIEW_KITCHEN_INVENTORY", "VIEW_DASHBOARD",
-                "VIEW_RECIPE", "PAY_BILLING", "CONFIRM_PAYMENT"
+                "VIEW_RECIPE", "PAY_BILLING", "CONFIRM_PAYMENT", "VIEW_PRODUCT", "VIEW_KITCHEN"
         ));
         Set<Privilege> coordinatorPrivileges = allPrivileges.stream()
                 .filter(p -> coordinatorCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role coordinatorRole = seedRole("COORDINATOR", coordinatorPrivileges);
-        seedUser("coordinator", "coordinator@ckms.com", "coordinator", "Supply Coordinator", coordinatorRole, null, defaultKitchen);
+        seedUser("coordinator", "coordinator@ckms.com", "coordinator", "Supply Coordinator", coordinatorRole, null, null);
 
         // 4. KITCHEN_STAFF - Execution: Sản xuất & Kho bếp
         Set<String> kitchenCodes = new HashSet<>(Arrays.asList(
                 "VIEW_PRODUCTION_PLAN", "EXECUTE_PRODUCTION", "UPDATE_PRODUCTION_PLAN",
                 "VIEW_KITCHEN_INVENTORY", "UPDATE_KITCHEN_INVENTORY", "ADJUST_KITCHEN_STOCK",
-                "START_SHIPMENT", "VIEW_SHIPMENT", "VIEW_PRODUCT", "VIEW_MATERIAL", "PREPARE_SHIPMENT"
+                "START_SHIPMENT", "VIEW_SHIPMENT", "VIEW_PRODUCT", "VIEW_MATERIAL", 
+                "PREPARE_SHIPMENT", "VIEW_KITCHEN"
         ));
         Set<Privilege> kitchenPrivileges = allPrivileges.stream()
                 .filter(p -> kitchenCodes.contains(p.getCode()))
@@ -226,5 +233,11 @@ public class DataSeeder implements CommandLineRunner {
                 System.out.println(">>> Seeded Payment Method: " + methodName);
             }
         }
+    }
+
+    private void seedBusinessData() {
+        // CLEAN SLATE: Let the user create Categories, Materials, Products and Recipes via UI
+        // This ensures all calculations are based on REAL USER INPUT
+        System.out.println(">>> Business Data seeding is EMPTY (Ready for manual UI testing)");
     }
 }

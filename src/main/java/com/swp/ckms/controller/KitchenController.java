@@ -1,5 +1,6 @@
 package com.swp.ckms.controller;
 
+import com.swp.ckms.dto.request.KitchenCreateRequest;
 import com.swp.ckms.dto.request.KitchenUpdateRequest;
 import com.swp.ckms.dto.response.ApiResponse;
 import com.swp.ckms.dto.response.KitchenResponse;
@@ -18,14 +19,20 @@ public class KitchenController {
 
     private final KitchenService kitchenService;
 
-    @GetMapping
+    @PostMapping
     @PreAuthorize("hasAuthority('MANAGE_KITCHEN_CONFIG')")
+    public ApiResponse<KitchenResponse> createKitchen(@RequestBody @Valid KitchenCreateRequest request) {
+        return ApiResponse.success(kitchenService.createKitchen(request));
+    }
+
+    @GetMapping
+    @PreAuthorize("hasAuthority('VIEW_KITCHEN') or hasAuthority('MANAGE_KITCHEN_CONFIG')")
     public ApiResponse<List<KitchenResponse>> getAllKitchens() {
         return ApiResponse.success(kitchenService.getAllKitchens());
     }
 
     @GetMapping("/{kitchenId}")
-    @PreAuthorize("hasAuthority('MANAGE_KITCHEN_CONFIG')")
+    @PreAuthorize("hasAuthority('VIEW_KITCHEN') or hasAuthority('MANAGE_KITCHEN_CONFIG')")
     public ApiResponse<KitchenResponse> getKitchenById(@PathVariable Long kitchenId) {
         return ApiResponse.success(kitchenService.getKitchenById(kitchenId));
     }
@@ -36,5 +43,12 @@ public class KitchenController {
             @PathVariable Long kitchenId,
             @RequestBody @Valid KitchenUpdateRequest request) {
         return ApiResponse.success(kitchenService.updateKitchen(kitchenId, request));
+    }
+
+    @DeleteMapping("/{kitchenId}")
+    @PreAuthorize("hasAuthority('MANAGE_KITCHEN_CONFIG')")
+    public ApiResponse<Void> deleteKitchen(@PathVariable Long kitchenId) {
+        kitchenService.deleteKitchen(kitchenId);
+        return ApiResponse.success(null);
     }
 }

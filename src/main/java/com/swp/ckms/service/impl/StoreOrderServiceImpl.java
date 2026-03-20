@@ -10,9 +10,11 @@ import com.swp.ckms.entity.OrderDetail;
 import com.swp.ckms.entity.Product;
 import com.swp.ckms.entity.StoreOrder;
 import com.swp.ckms.entity.User;
+import com.swp.ckms.entity.AllocationItem;
 import com.swp.ckms.enums.InvoiceStatus;
 import com.swp.ckms.enums.OrderStatus;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
+import com.swp.ckms.repository.AllocationItemRepository;
 import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.InvoiceRepository;
 import com.swp.ckms.repository.ProductRepository;
@@ -20,6 +22,7 @@ import com.swp.ckms.repository.StoreOrderRepository;
 import com.swp.ckms.repository.StoreStockItemRepository;
 import com.swp.ckms.repository.StoreWarehouseRepository;
 import com.swp.ckms.repository.UserRepository;
+import com.swp.ckms.repository.CentralKitchenRepository;
 import com.swp.ckms.repository.specification.StoreOrderSpecification;
 import com.swp.ckms.entity.StoreWarehouse;
 import com.swp.ckms.exception.business.BusinessRuleViolationException;
@@ -50,13 +53,13 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
     private final StoreOrderRepository storeOrderRepository;
     private final UserRepository userRepository;
-    private final FranchiseStoreRepository franchiseStoreRepository;
     private final ProductRepository productRepository;
+    private final FranchiseStoreRepository franchiseStoreRepository;
     private final InvoiceRepository invoiceRepository;
-    private final StoreWarehouseRepository storeWarehouseRepository;
-    private final StoreStockItemRepository storeStockItemRepository;
+    private final AllocationItemRepository allocationItemRepository;
     private final com.swp.ckms.service.NotificationService notificationService;
     private final com.swp.ckms.util.RecipientResolver recipientResolver;
+    private final CentralKitchenRepository centralKitchenRepository;
 
     @Override
     public StoreOrderResponse createOrder(StoreOrderRequest request, String username) {
@@ -297,23 +300,42 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             User approvedBy = userRepository.findById(ctx.getUserId())
                     .orElseThrow(() -> new ResourceNotFoundException("Approver not found"));
 
-            // [Phase 2] Kitchen Capacity Guard (Refined: Coordinator-based)
+            // [Phase 2] Kitchen Capacity Guard (Refined: Global if no specific kitchen)
             CentralKitchen kitchen = approvedBy.getKitchen();
-            if (kitchen != null && kitchen.getMaxDailyCapacity() != null) {
-                java.math.BigDecimal existingLoad = storeOrderRepository.sumQuantityByKitchenAndDeliveryDate(
-                        kitchen.getKitchenId(), order.getDeliveryDate());
-                if (existingLoad == null) existingLoad = java.math.BigDecimal.ZERO;
+            if (kitchen != null) {
+                // Kitchen-specific check for local coordinators
+                if (kitchen.getMaxDailyCapacity() != null) {
+                    java.math.BigDecimal existingLoad = storeOrderRepository.sumQuantityByKitchenAndDeliveryDate(
+                            kitchen.getKitchenId(), order.getDeliveryDate());
+                    if (existingLoad == null) existingLoad = java.math.BigDecimal.ZERO;
+
+                    java.math.BigDecimal newOrderLoad = java.math.BigDecimal.valueOf(
+                            order.getOrderDetails().stream().mapToDouble(d -> d.getQuantity()).sum());
+
+                    if (existingLoad.add(newOrderLoad).compareTo(kitchen.getMaxDailyCapacity()) > 0) {
+                        throw new com.swp.ckms.exception.business.BusinessRuleViolationException(String.format(
+                                "Duyệt đơn thất bại: Tổng tải sản xuất ngày %s vượt quá công suất bếp %s (Hệ thống đã nhận: %s, Đơn này: %s)",
+                                order.getDeliveryDate(), kitchen.getMaxDailyCapacity(), existingLoad, newOrderLoad));
+                    }
+                }
+            } else {
+                // Global check for HQ users (no assigned kitchen)
+                java.math.BigDecimal totalCapacity = centralKitchenRepository.sumTotalMaxDailyCapacity();
+                if (totalCapacity == null) totalCapacity = java.math.BigDecimal.ZERO;
+
+                java.math.BigDecimal globalLoad = storeOrderRepository.sumTotalQuantityByDeliveryDate(order.getDeliveryDate());
+                if (globalLoad == null) globalLoad = java.math.BigDecimal.ZERO;
 
                 java.math.BigDecimal newOrderLoad = java.math.BigDecimal.valueOf(
                         order.getOrderDetails().stream().mapToDouble(d -> d.getQuantity()).sum());
 
-                if (existingLoad.add(newOrderLoad).compareTo(kitchen.getMaxDailyCapacity()) > 0) {
+                if (globalLoad.add(newOrderLoad).compareTo(totalCapacity) > 0) {
                     throw new com.swp.ckms.exception.business.BusinessRuleViolationException(String.format(
-                            "Duyệt đơn thất bại: Tổng tải sản xuất ngày %s vượt quá công suất bếp %s (Hệ thống đã nhận: %s, Đơn này: %s)",
-                            order.getDeliveryDate(), kitchen.getMaxDailyCapacity(), existingLoad, newOrderLoad));
+                            "Duyệt đơn thất bại: Tổng tải toàn hệ thống ngày %s (%s) đã chạm giới hạn công suất tổng (%s).",
+                            order.getDeliveryDate(), globalLoad.add(newOrderLoad), totalCapacity));
                 }
-            } else {
-                log.info("Skipping capacity guard Check: Kitchen or maxDailyCapacity is not set for coordinator: {}", approvedBy.getUsername());
+                log.info("HQ Approval: Global capacity check passed. Total: {}, Used: {}, New: {}", 
+                        totalCapacity, globalLoad, newOrderLoad);
             }
 
             order.setStatus(OrderStatus.APPROVED); // Duyệt đơn là đưa vào hàng chờ Scheduled
@@ -381,8 +403,22 @@ public class StoreOrderServiceImpl implements StoreOrderService {
     }
 
     private StoreOrderResponse mapToOrderResponse(StoreOrder order) {
+        java.util.Map<Long, AllocationItem> allocationMap = java.util.Collections.emptyMap();
+        
+        // If order is allocated or further, fetch allocation items for precise display
+        if (order.getStatus() == OrderStatus.ALLOCATED || 
+            order.getStatus() == OrderStatus.IN_TRANSIT || 
+            order.getStatus() == OrderStatus.DELIVERED || 
+            order.getStatus() == OrderStatus.CONFIRMED) {
+            
+            List<AllocationItem> allocationItems = allocationItemRepository.findByOrder_OrderId(order.getOrderId());
+            allocationMap = allocationItems.stream()
+                    .collect(Collectors.toMap(ai -> ai.getProduct().getId(), ai -> ai));
+        }
+
+        final java.util.Map<Long, AllocationItem> finalAllocationMap = allocationMap;
         List<OrderDetailResponse> detailResponses = order.getOrderDetails().stream()
-                .map(this::mapToDetailResponse)
+                .map(d -> mapToDetailResponse(d, finalAllocationMap.get(d.getProduct().getId())))
                 .collect(Collectors.toList());
 
         return StoreOrderResponse.builder()
@@ -400,16 +436,22 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .build();
     }
 
-    private OrderDetailResponse mapToDetailResponse(OrderDetail detail) {
+    private OrderDetailResponse mapToDetailResponse(OrderDetail detail, AllocationItem allocationItem) {
         Product product = detail.getProduct();
-        BigDecimal subTotal = detail.getUnitPrice().multiply(BigDecimal.valueOf(detail.getQuantity()));
+        
+        // Use allocated quantity if available, otherwise use original requested quantity
+        BigDecimal displayQty = (allocationItem != null) 
+                ? allocationItem.getFinalQty() 
+                : BigDecimal.valueOf(detail.getQuantity());
+                
+        BigDecimal subTotal = detail.getUnitPrice().multiply(displayQty);
         
         return OrderDetailResponse.builder()
                 .id(detail.getId())
                 .productId(product.getId())
                 .productName(product.getName())
                 .unit(product.getUnit() != null ? product.getUnit().name() : null)
-                .quantity(detail.getQuantity())
+                .quantity(displayQty.intValue()) // Keep as int for DTO compatibility
                 .unitPrice(detail.getUnitPrice())
                 .subTotal(subTotal)
                 .build();
@@ -448,21 +490,26 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
         // --- TRIGGER NOTIFICATION ---
         try {
-            String recipient = recipientResolver.resolveCoordinatorEmail(1L);
-            if (recipient != null) {
-                java.util.Map<String, Object> payload = java.util.Map.of(
-                        "orderId", savedOrder.getOrderId(),
-                        "storeName", savedOrder.getStore().getName(),
-                        "orderDate", savedOrder.getOrderDate().toString()
-                );
-                
-                notificationService.createEmailNotification(
-                        com.swp.ckms.enums.NotificationType.ORDER_SUBMITTED,
-                        recipient,
-                        "order-submitted.html",
-                        payload,
-                        "ORDER_SUBMITTED_" + savedOrder.getOrderId()
-                );
+            // Since stores are independent, we notify all coordinators of all active kitchens
+            List<CentralKitchen> allKitchens = centralKitchenRepository.findAll();
+            for (CentralKitchen k : allKitchens) {
+                String recipient = recipientResolver.resolveCoordinatorEmail(k.getKitchenId());
+                if (recipient != null) {
+                    java.util.Map<String, Object> payload = java.util.Map.of(
+                            "orderId", savedOrder.getOrderId(),
+                            "storeName", savedOrder.getStore().getName(),
+                            "orderDate", savedOrder.getOrderDate().toString()
+                    );
+                    
+                    notificationService.createEmailNotification(
+                            com.swp.ckms.enums.NotificationType.ORDER_SUBMITTED,
+                            recipient,
+                            "order-submitted.html",
+                            payload,
+                            "ORDER_SUBMITTED_" + savedOrder.getOrderId()
+                    );
+                    log.info("Notification sent to coordinator {} for order #{}", recipient, savedOrder.getOrderId());
+                }
             }
         } catch (Exception e) {
             log.error("Failed to trigger order submission notification", e);

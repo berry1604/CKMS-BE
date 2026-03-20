@@ -49,8 +49,8 @@ public class DispatchServiceImpl implements DispatchService {
         }
         if (remainingKitchenCapacity.compareTo(BigDecimal.ZERO) < 0) remainingKitchenCapacity = BigDecimal.ZERO;
 
-        // 2. Fetch Order Pool (Unassigned APPROVED orders)
-        List<StoreOrder> orderPool = storeOrderRepository.findUnassignedApprovedOrders(kitchenId, targetDate);
+        // 2. Fetch Order Pool (Pull Model: Any kitchen can see any unassigned APPROVED orders)
+        List<StoreOrder> orderPool = storeOrderRepository.findAllUnassignedApprovedOrders(targetDate);
         
         // 3. Group by Product
         Map<Product, List<StoreOrder>> ordersByProduct = new HashMap<>();
@@ -161,11 +161,16 @@ public class DispatchServiceImpl implements DispatchService {
 
         for (RecipeDetail detail : details) {
             BigDecimal stock = stockMap.getOrDefault(detail.getMaterial().getId(), BigDecimal.ZERO);
-            BigDecimal neededPerUnit = detail.getQuantityNeeded();
+            BigDecimal neededForBatch = detail.getQuantityNeeded();
+            BigDecimal yield = activeRecipe.get().getYield();
             
-            if (neededPerUnit.compareTo(BigDecimal.ZERO) <= 0) continue;
+            if (neededForBatch.compareTo(BigDecimal.ZERO) <= 0 || yield.compareTo(BigDecimal.ZERO) <= 0) continue;
 
-            BigDecimal capacityForThisIngredient = stock.divide(neededPerUnit, 0, RoundingMode.FLOOR);
+            // Capacity = (Stock / NeededForBatch) * Yield
+            BigDecimal capacityForThisIngredient = stock.divide(neededForBatch, 4, RoundingMode.HALF_UP)
+                    .multiply(yield)
+                    .setScale(0, RoundingMode.FLOOR);
+            
             if (capacityForThisIngredient.compareTo(minCapacity) < 0) {
                 minCapacity = capacityForThisIngredient;
             }
