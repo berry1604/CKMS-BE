@@ -28,6 +28,7 @@ public class KitchenServiceImpl implements KitchenService {
     private final CentralKitchenRepository kitchenRepository;
     private final UserRepository userRepository;
     private final KitchenWarehouseRepository warehouseRepository;
+    private final com.swp.ckms.repository.ProductionPlanRepository productionPlanRepository;
 
     @Override
     @Transactional
@@ -112,18 +113,42 @@ public class KitchenServiceImpl implements KitchenService {
     }
 
     private KitchenResponse mapToResponse(CentralKitchen kitchen) {
-        Long warehouseId = warehouseRepository.findByKitchen_KitchenId(kitchen.getKitchenId())
+        Long kitchenId = kitchen.getKitchenId();
+
+        Long warehouseId = warehouseRepository.findByKitchen_KitchenId(kitchenId)
                 .stream()
                 .map(KitchenWarehouse::getWarehouseId)
                 .findFirst()
                 .orElse(null);
 
+        // 1. currentStatus: check if any plan is IN_PRODUCTION
+        boolean isProducing = productionPlanRepository.existsByKitchen_KitchenIdAndStatus(
+                kitchenId, com.swp.ckms.enums.ProductionPlanStatus.IN_PRODUCTION);
+        String currentStatus = isProducing ? "IN_PRODUCTION" : "IDLE";
+
+        // 2. activePlanCount: count plans that are active (any date, matching statuses)
+        java.util.List<com.swp.ckms.enums.ProductionPlanStatus> activeStatuses = java.util.List.of(
+                com.swp.ckms.enums.ProductionPlanStatus.PLANNED,
+                com.swp.ckms.enums.ProductionPlanStatus.READY_TO_PRODUCE,
+                com.swp.ckms.enums.ProductionPlanStatus.IN_PRODUCTION);
+
+        long activePlanCount = productionPlanRepository.countByKitchen_KitchenIdAndStatusIn(
+                kitchenId, activeStatuses);
+
+        // 3. todayUsedCapacity: sum of planned quantities for active plans
+        java.math.BigDecimal todayUsedCapacity = productionPlanRepository
+                .sumPlannedQuantityByKitchenAndStatuses(kitchenId, activeStatuses);
+        if (todayUsedCapacity == null) todayUsedCapacity = java.math.BigDecimal.ZERO;
+
         return KitchenResponse.builder()
-                .kitchenId(kitchen.getKitchenId())
+                .kitchenId(kitchenId)
                 .name(kitchen.getName())
                 .address(kitchen.getAddress())
                 .maxDailyCapacity(kitchen.getMaxDailyCapacity())
                 .warehouseId(warehouseId)
+                .currentStatus(currentStatus)
+                .activePlanCount((int) activePlanCount)
+                .todayUsedCapacity(todayUsedCapacity)
                 .build();
     }
 }

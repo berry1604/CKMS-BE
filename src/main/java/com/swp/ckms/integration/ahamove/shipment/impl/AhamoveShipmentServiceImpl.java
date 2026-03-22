@@ -42,7 +42,11 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
     private final CentralKitchenRepository centralKitchenRepository;
 
     @Override
+<<<<<<< HEAD
+    @Transactional
+=======
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+>>>>>>> 29c419b6a03b08fadec6c0fd9123c8346f82696a
     public void dispatchToAhamove(Shipment shipment) {
         log.info("Gửi shipment #{} lên Ahamove", shipment.getShipmentId());
 

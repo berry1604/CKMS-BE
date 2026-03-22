@@ -17,4 +17,9 @@ public class KitchenResponse {
     private String address;
     private BigDecimal maxDailyCapacity;
     private Long warehouseId;
+
+    // Production status fields
+    private String currentStatus;         // "IDLE" | "IN_PRODUCTION"
+    private int activePlanCount;          // Số plan active hôm nay
+    private BigDecimal todayUsedCapacity;  // Tổng sản lượng đã lên plan hôm nay
 }
