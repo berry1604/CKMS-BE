@@ -432,6 +432,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .totalAmount(order.getTotalAmount())
                 .deliveryDate(order.getDeliveryDate())
                 .storeName(order.getStore() != null ? order.getStore().getName() : null)
+                .storePhone(order.getStore() != null ? order.getStore().getPhoneNumber() : null)
                 .orderDetails(detailResponses)
                 .build();
     }

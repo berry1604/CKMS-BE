@@ -209,7 +209,7 @@ public class DataSeeder implements CommandLineRunner {
                     .name("Cửa Hàng Mẫu CKMS")
                     .address("Số 1 Mạc Đĩnh Chi, Phường Đa Kao, Quận 1, Thành phố Hồ Chí Minh")
                     .paymentCycle("MONTHLY")
-                    .phone("84377774968")
+                    .phoneNumber("84377774968")
                     .latitude("10.782140")
                     .longitude("106.701484")
                     .build());
