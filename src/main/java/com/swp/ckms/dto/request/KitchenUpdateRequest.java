@@ -18,4 +18,10 @@ public class KitchenUpdateRequest {
 
     @DecimalMin(value = "0.0", message = "Max daily capacity must be at least 0")
     private BigDecimal maxDailyCapacity;
+
+    private Double latitude;
+
+    private Double longitude;
+
+    private String phone;
 }

@@ -16,6 +16,9 @@ public class KitchenResponse {
     private String name;
     private String address;
     private BigDecimal maxDailyCapacity;
+    private Double latitude;
+    private Double longitude;
+    private String phone;
     private Long warehouseId;
 
     // Production status fields
