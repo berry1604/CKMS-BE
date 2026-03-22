@@ -36,6 +36,10 @@ public class AhamoveOrderRequest {
 
     // Ghi chú
     private String remarks;
+    
+    // Webhook callback URL
+    @JsonProperty("callback_url")
+    private String callbackUrl;
 
     @Data
     @Builder
