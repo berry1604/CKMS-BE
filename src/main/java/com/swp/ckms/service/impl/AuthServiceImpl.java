@@ -79,19 +79,28 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public LoginResponse refreshToken(String requestRefreshToken) {
+        // Validation: Ensure signature (by existing UUID lookup) + existence
         RefreshToken token = refreshTokenService.findByToken(requestRefreshToken)
-                .orElseThrow(() -> new com.swp.ckms.exception.auth.RefreshTokenExpiredException("Refresh token is not in database!"));
+                .orElseThrow(() -> new com.swp.ckms.exception.auth.RefreshTokenExpiredException("Khong tim thay hoac refresh token khong le!"));
 
+        // Validation: Verify Expiration (throws if expired and deletes it)
         refreshTokenService.verifyExpiration(token);
 
+        // Extract user
         User user = token.getUser();
-        String accessToken = buildAccessToken(user);
+        
+        // Generate new access token
+        String accessToken = tokenProvider.generateAccessToken(user);
+
+        // Recommended logic: Refresh token rotation
+        // refreshTokenService.createRefreshToken internally updates existing token to a new UUID
+        RefreshToken newRefreshToken = refreshTokenService.createRefreshToken(user.getUserId());
 
         return LoginResponse.builder()
                 .accessToken(accessToken)
-                .refreshToken(requestRefreshToken)
+                .refreshToken(newRefreshToken.getToken())
                 .accessTokenExpiresIn(accessExpirationMs / 1000)
-                .refreshTokenExpiresIn(java.time.Duration.between(java.time.Instant.now(), token.getExpiryDate()).getSeconds())
+                .refreshTokenExpiresIn(java.time.Duration.between(java.time.Instant.now(), newRefreshToken.getExpiryDate()).getSeconds())
                 .userId(user.getUserId())
                 .build();
     }

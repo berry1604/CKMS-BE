@@ -99,12 +99,10 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
         String normalizedStatus = normalizeAhamoveStatus(ahamoveStatus);
         if (normalizedStatus == null) return null;
         return switch (normalizedStatus) {
-            case "ASSIGNING",
-                 "ACCEPTED",
-                 "IN PROCESS" -> ShipmentStatus.IN_TRANSIT;
+            case "ASSIGNING" -> ShipmentStatus.PREPARED;
+            case "PICKED UP", "ACCEPTED", "IN PROCESS" -> ShipmentStatus.IN_TRANSIT;
             case "COMPLETED"  -> ShipmentStatus.DELIVERED;
-            case "CANCELLED",
-                 "FAILED"     -> ShipmentStatus.CANCELLED;
+            case "CANCELED", "CANCELLED", "FAILED"     -> ShipmentStatus.CANCELLED;
             default -> {
                 log.warn("Không nhận ra Ahamove status: {}", ahamoveStatus);
                 yield null;
@@ -116,12 +114,10 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
         String normalizedStatus = normalizeAhamoveStatus(ahamoveStatus);
         if (normalizedStatus == null) return null;
         return switch (normalizedStatus) {
-            case "ASSIGNING",
-                 "ACCEPTED",
-                 "IN PROCESS" -> OrderStatus.IN_TRANSIT;
+            case "ASSIGNING" -> OrderStatus.READY;
+            case "PICKED UP", "ACCEPTED", "IN PROCESS" -> OrderStatus.IN_TRANSIT;
             case "COMPLETED"  -> OrderStatus.DELIVERED;
-            case "CANCELLED",
-                 "FAILED"     -> OrderStatus.CANCELLED;
+            case "CANCELED", "CANCELLED", "FAILED"     -> OrderStatus.CANCELLED;
             default -> {
                 log.warn("Không map được Ahamove status cho order: {}", ahamoveStatus);
                 yield null;
@@ -256,6 +252,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
             .items(allItems)
             .remarks(shipment.getRemarks() != null ? shipment.getRemarks() 
                     : "Shipment #" + shipment.getShipmentId())
+            .callbackUrl("https://deprecatorily-nonmucilaginous-many.ngrok-free.dev/api/v1/webhooks/ahamove")
             .build();
 }
 }

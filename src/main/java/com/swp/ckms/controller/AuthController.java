@@ -28,8 +28,8 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<LoginResponse> refresh(@RequestBody String refreshToken) {
-         return ResponseEntity.ok(authService.refreshToken(refreshToken));
+    public ResponseEntity<LoginResponse> refresh(@RequestBody com.swp.ckms.dto.request.RefreshTokenRequest request) {
+         return ResponseEntity.ok(authService.refreshToken(request.getRefreshToken()));
     }
 
     @PostMapping("/activate")

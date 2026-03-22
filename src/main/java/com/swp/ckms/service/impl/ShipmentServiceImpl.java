@@ -60,7 +60,12 @@ public class ShipmentServiceImpl implements ShipmentService {
     
 
     @Override
+    @org.springframework.transaction.annotation.Transactional
     public ShipmentResponse createShipment(CreateShipmentRequest request) {
+        log.info("--- BẮT ĐẦU TẠO SHIPMENT ---");
+        log.info("Production Plan ID: {}", request.getProductionPlanId());
+        log.info("Tổng số điểm giao hàng (Stops): {}", request.getDropPoints().size());
+
         UserContext ctx = SecurityUtils.getCurrentUserContext();
         if (ctx == null) throw new AccessDeniedException("Unauthorized");
 
@@ -72,10 +77,11 @@ public class ShipmentServiceImpl implements ShipmentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Production Plan not found"));
 
         if (plan.getStatus() != ProductionPlanStatus.FINISHED) {
+            log.error("Lỗi: Production Plan {} chưa FINISHED (Status: {})", plan.getPlanId(), plan.getStatus());
             throw new IllegalStateException("Production Plan must be FINISHED to create shipment");
         }
 
-        // Create shipment header, destination stores are now represented only by ShipmentStop entries.
+        log.info("1. Lưu Shipment header (Chưa gán Stops)...");
         Shipment shipment = Shipment.builder()
                 .productionPlan(plan)
                 .ahamoveServiceId(request.getAhamoveServiceId())
@@ -85,12 +91,13 @@ public class ShipmentServiceImpl implements ShipmentService {
                 .build();
 
         Shipment savedShipment = shipmentRepository.save(shipment);
+        log.info("-> Đã lưu Shipment ID: {}, bắt đầu vòng lặp tạo ShipmentStop", savedShipment.getShipmentId());
 
-        // Create stops (multi-drop points)
         List<ShipmentStop> stops = new ArrayList<>();
         int stopOrder = 1;
 
         for (DropPointRequest dropPoint : request.getDropPoints()) {
+            log.info("2. Đang xử lý Stop thứ {} cho Store ID: {}", stopOrder, dropPoint.getStoreId());
             FranchiseStore store = franchiseStoreRepository.findById(dropPoint.getStoreId())
                     .orElseThrow(() -> new ResourceNotFoundException("Store not found: " + dropPoint.getStoreId()));
 
@@ -102,19 +109,23 @@ public class ShipmentServiceImpl implements ShipmentService {
                     .build();
 
             ShipmentStop savedStop = shipmentStopRepository.save(stop);
+            log.info("-> Đã lưu ShipmentStop ID: {} (Store {})", savedStop.getStopId(), store.getStoreId());
 
-            // Validate and assign orders to this stop
+            log.info("3. Bắt đầu validate và gán các đơn hàng (StoreOrder IDs: {})", dropPoint.getStoreOrderIds());
             List<StoreOrder> orders = storeOrderRepository.findAllById(dropPoint.getStoreOrderIds());
             
             for (StoreOrder order : orders) {
+                log.info("- Kiểm tra Order ID: {} (Thuộc Store {})", order.getOrderId(), order.getStore().getStoreId());
+
                 if (!order.getStore().getStoreId().equals(store.getStoreId())) {
+                    log.error("=> Lỗi: Order #{} không thuộc Store #{} (Nó thuộc Store #{})", 
+                              order.getOrderId(), store.getStoreId(), order.getStore().getStoreId());
                     throw new IllegalArgumentException("Order #" + order.getOrderId() 
                             + " does not belong to store #" + store.getStoreId());
                 }
-                // if (order.getStatus() != OrderStatus.READY) {
-                //     throw new IllegalStateException("Order #" + order.getOrderId() + " is not READY");
-                // }
                 if (order.getShipmentStop() != null) {
+                    log.error("=> Lỗi: Order #{} đã được gán vào ShipmentStop #{}", 
+                              order.getOrderId(), order.getShipmentStop().getStopId());
                     throw new IllegalStateException("Order #" + order.getOrderId() + " already assigned to a shipment");
                 }
                 
@@ -123,12 +134,11 @@ public class ShipmentServiceImpl implements ShipmentService {
             }
             storeOrderRepository.saveAll(orders);
             stops.add(savedStop);
+            log.info("-> Gán thành công {} orders vào Stop ID: {}", orders.size(), savedStop.getStopId());
         }
 
         savedShipment.setStops(stops);
-
-        log.info("Shipment #{} created with {} drop points", 
-                savedShipment.getShipmentId(), stops.size());
+        log.info("--- HOÀN TẤT TẠO SHIPMENT #{} VỚI {} STOPS ---", savedShipment.getShipmentId(), stops.size());
 
         return mapToResponse(savedShipment);
     }

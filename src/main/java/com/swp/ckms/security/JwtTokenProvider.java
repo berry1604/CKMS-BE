@@ -86,4 +86,20 @@ public class JwtTokenProvider {
             return false;
         }
     }
+
+    // --- Aliases requested by user for JwtService standard ---
+    public String generateAccessToken(com.swp.ckms.entity.User user) {
+        Long storeId = user.getStore() != null ? user.getStore().getStoreId() : null;
+        Long coordinatorId = user.getKitchen() != null ? user.getKitchen().getKitchenId() : null;
+        String scope = user.getRole() != null ? user.getRole().getRoleName() : "USER";
+        return generateToken(user.getUsername(), user.getUserId(), scope, storeId, coordinatorId, scope);
+    }
+
+    public String generateRefreshToken(com.swp.ckms.entity.User user) {
+        return java.util.UUID.randomUUID().toString();
+    }
+
+    public String extractUsername(String token) {
+        return getUsernameFromToken(token);
+    }
 }
