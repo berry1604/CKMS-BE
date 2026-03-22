@@ -23,7 +23,6 @@ public class FranchiseStore {
 
     private String address;
 
-    private String phone;
     private String latitude;
     private String longitude;
 

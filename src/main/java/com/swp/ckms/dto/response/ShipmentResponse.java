@@ -46,6 +46,7 @@ public class ShipmentResponse {
         private Integer stopOrder;
         private Long storeId;
         private String storeName;
+        private String storePhone;
         private String remarks;
         private List<Long> storeOrderIds;
     }

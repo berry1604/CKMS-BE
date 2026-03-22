@@ -24,5 +24,6 @@ public class StoreOrderResponse {
     private BigDecimal totalAmount;
     private java.time.LocalDate deliveryDate;
     private String storeName;
+    private String storePhone;
     private List<OrderDetailResponse> orderDetails;
 }

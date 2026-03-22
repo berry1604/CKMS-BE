@@ -377,6 +377,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                     .stopOrder(stop.getStopOrder())
                     .storeId(stop.getStore() != null ? stop.getStore().getStoreId() : null)
                     .storeName(stop.getStore() != null ? stop.getStore().getName() : null)
+                    .storePhone(stop.getStore() != null ? stop.getStore().getPhoneNumber() : null)
                     .remarks(stop.getRemarks())
                     .storeOrderIds(orderIdsByStopId.getOrDefault(stop.getStopId(), List.of()))
                     .build())
