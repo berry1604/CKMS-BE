@@ -42,7 +42,6 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
     private final CentralKitchenRepository centralKitchenRepository;
 
     @Override
-//     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     @Transactional
     public void dispatchToAhamove(Shipment shipment) {
         log.info("Gửi shipment #{} lên Ahamove", shipment.getShipmentId());
@@ -225,7 +224,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                 .lat(store.getLatitude() != null ? Double.parseDouble(store.getLatitude()) : kitchen.getLatitude())
                 .lng(store.getLongitude() != null ? Double.parseDouble(store.getLongitude()) : kitchen.getLongitude())
                 .name(store.getName())
-                .mobile(store.getPhone() != null ? store.getPhone() : "")
+                .mobile(store.getPhoneNumber() != null ? store.getPhoneNumber() : "")
                 .remarks(stop.getRemarks() != null ? stop.getRemarks() : "Giao hàng cho " + store.getName())
                 // .trackingNumber("STOP-" + stop.getStopId()) // Để tracking từng điểm
                 .build());

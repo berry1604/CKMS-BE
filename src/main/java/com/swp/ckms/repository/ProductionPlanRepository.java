@@ -29,4 +29,22 @@ public interface ProductionPlanRepository extends JpaRepository<ProductionPlan, 
             @Param("plannedDate") java.time.LocalDate plannedDate);
 
     long countByPlannedDateAndKitchen_KitchenId(java.time.LocalDate plannedDate, Long kitchenId);
+
+    boolean existsByKitchen_KitchenIdAndStatus(Long kitchenId, com.swp.ckms.enums.ProductionPlanStatus status);
+
+    long countByKitchen_KitchenIdAndStatusIn(
+            Long kitchenId,
+            java.util.List<com.swp.ckms.enums.ProductionPlanStatus> statuses);
+
+    @Query("""
+        SELECT COALESCE(SUM(od.quantity), 0) 
+        FROM ProductionPlan p 
+        JOIN StoreOrder o ON o.productionPlan.planId = p.planId
+        JOIN o.orderDetails od
+        WHERE p.kitchen.kitchenId = :kitchenId 
+        AND p.status IN :statuses
+    """)
+    java.math.BigDecimal sumPlannedQuantityByKitchenAndStatuses(
+            @Param("kitchenId") Long kitchenId,
+            @Param("statuses") java.util.List<com.swp.ckms.enums.ProductionPlanStatus> statuses);
 }
