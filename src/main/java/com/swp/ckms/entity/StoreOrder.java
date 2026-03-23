@@ -53,6 +53,8 @@ public class StoreOrder {
 
     private BigDecimal orderFee;
 
+    private BigDecimal shippingFee;
+
     private BigDecimal totalAmount;
 
     @Enumerated(EnumType.STRING)

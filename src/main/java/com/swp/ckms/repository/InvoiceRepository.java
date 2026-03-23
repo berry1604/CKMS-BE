@@ -28,6 +28,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
             i.invoiceId, 
             i.order.orderId, 
             i.amount, 
+            i.order.orderFee,
+            i.order.shippingFee,
             i.issuedAt
         )
         FROM Invoice i 

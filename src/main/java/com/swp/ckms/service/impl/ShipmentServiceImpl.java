@@ -57,6 +57,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final com.swp.ckms.service.NotificationService notificationService;
     private final com.swp.ckms.util.RecipientResolver recipientResolver;
     private final ShipmentStopRepository shipmentStopRepository;
+    private final ShipmentFeeAllocationService shipmentFeeAllocationService;
     
 
     @Override
@@ -261,6 +262,8 @@ public class ShipmentServiceImpl implements ShipmentService {
             order.setStatus(OrderStatus.DELIVERED);
         }
         storeOrderRepository.saveAll(orders);
+
+        shipmentFeeAllocationService.allocateForDeliveredShipment(shipment);
 
         // --- LOGIC CỘNG KHO STORE & UPDATE INVOICE ---
         confirmAndTransferStock(shipment);

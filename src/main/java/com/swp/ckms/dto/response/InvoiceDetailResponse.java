@@ -16,5 +16,7 @@ public class InvoiceDetailResponse {
     private Long invoiceId;
     private Long orderId;
     private BigDecimal amount;
+    private BigDecimal orderAmount;
+    private BigDecimal shippingAmount;
     private LocalDateTime issuedAt;
 }
