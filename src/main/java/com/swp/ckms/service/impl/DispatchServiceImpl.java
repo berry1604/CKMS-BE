@@ -40,6 +40,10 @@ public class DispatchServiceImpl implements DispatchService {
         CentralKitchen kitchen = kitchenRepository.findById(kitchenId)
                 .orElseThrow(() -> new IllegalArgumentException("Kitchen not found with ID: " + kitchenId));
         
+        if (kitchen.getIsActive() != null && !kitchen.getIsActive()) {
+            throw new IllegalArgumentException("Cannot dispatch to an inactive kitchen: " + kitchen.getName());
+        }
+        
         BigDecimal remainingKitchenCapacity = kitchen.getMaxDailyCapacity() != null ? kitchen.getMaxDailyCapacity() : BigDecimal.valueOf(999999);
         
         // Subtract already committed load for that date

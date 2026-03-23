@@ -37,6 +37,10 @@ public class KitchenServiceImpl implements KitchenService {
                 .name(request.getName())
                 .address(request.getAddress())
                 .maxDailyCapacity(request.getMaxDailyCapacity())
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
+                .phone(request.getPhone())
+                .isActive(request.getIsActive() != null ? request.getIsActive() : true)
                 .build();
 
         CentralKitchen savedKitchen = kitchenRepository.save(kitchen);
@@ -63,6 +67,10 @@ public class KitchenServiceImpl implements KitchenService {
         if (request.getName() != null) kitchen.setName(request.getName());
         if (request.getAddress() != null) kitchen.setAddress(request.getAddress());
         if (request.getMaxDailyCapacity() != null) kitchen.setMaxDailyCapacity(request.getMaxDailyCapacity());
+        if (request.getLatitude() != null) kitchen.setLatitude(request.getLatitude());
+        if (request.getLongitude() != null) kitchen.setLongitude(request.getLongitude());
+        if (request.getPhone() != null) kitchen.setPhone(request.getPhone());
+        if (request.getIsActive() != null) kitchen.setIsActive(request.getIsActive());
 
         return mapToResponse(kitchenRepository.save(kitchen));
     }
@@ -145,10 +153,14 @@ public class KitchenServiceImpl implements KitchenService {
                 .name(kitchen.getName())
                 .address(kitchen.getAddress())
                 .maxDailyCapacity(kitchen.getMaxDailyCapacity())
+                .latitude(kitchen.getLatitude())
+                .longitude(kitchen.getLongitude())
+                .phone(kitchen.getPhone())
                 .warehouseId(warehouseId)
                 .currentStatus(currentStatus)
                 .activePlanCount((int) activePlanCount)
                 .todayUsedCapacity(todayUsedCapacity)
+                .isActive(kitchen.getIsActive())
                 .build();
     }
 }

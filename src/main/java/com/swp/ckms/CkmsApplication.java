@@ -8,6 +8,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import com.swp.ckms.config.AppProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
+import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+
 @SpringBootApplication
 @EnableScheduling
 @EnableJpaAuditing

@@ -17,5 +17,7 @@ public class StoreResponse {
     private String address;
     private String paymentCycle;
     private String phoneNumber;
+    private String latitude;
+    private String longitude;
     private Long warehouseId;
 }

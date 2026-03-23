@@ -10,7 +10,10 @@ import com.swp.ckms.dto.response.BillingStatementSummaryResponse;
 import com.swp.ckms.dto.response.PaymentStatementResponse;
 import com.swp.ckms.enums.BillingStatementStatus;
 import com.swp.ckms.service.BillingStatementService;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -22,15 +25,26 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
+
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/billing-statements")
 @RequiredArgsConstructor
+
 public class BillingStatementController {
 
     private final BillingStatementService billingStatementService;
+    @Value("${FRONTEND_URL=http://localhost:5173}")
+    private String frontendUrl;
+
+    @Value("${frontend.vnpay-return-path}")
+    private String returnPath;
 
     @PostMapping("/generate")
     @PreAuthorize("hasAuthority('CONFIRM_PAYMENT')")
@@ -128,12 +142,31 @@ public class BillingStatementController {
                         .build());
     }
 
+
+
     @GetMapping("/vnpay-return")
-    public ResponseEntity<String> handleVnPayReturn(
-            @RequestParam Map<String, String> params
-    ) {
-        billingStatementService.handleVnPayReturn(params);
-        return ResponseEntity.ok("Payment processed successfully");
+    public void handleVnPayReturn(
+            @RequestParam Map<String, String> params,
+            HttpServletResponse response
+    ) throws IOException {
+
+        try {
+            billingStatementService.handleVnPayReturn(params);
+        } catch (Exception e) {
+            System.out.println("VNPay return error: " + e.getMessage());
+        }
+
+        // encode params
+        String query = params.entrySet().stream()
+                .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8)
+                        + "=" +
+                        URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
+                .collect(Collectors.joining("&"));
+
+        // build URL từ config
+        String redirectUrl = frontendUrl + returnPath + "?" + query;
+
+        response.sendRedirect(redirectUrl);
     }
 
     @GetMapping("/vnpay-ipn")

@@ -29,7 +29,7 @@ public class StoreOrderController {
     }
     
     @GetMapping("/my")
-    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER')")
+    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER') or hasAuthority('VIEW_MY_ORDERS')")
     public ResponseEntity<Page<StoreOrderResponse>> getMyOrders(
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(defaultValue = "0") int page,
@@ -69,7 +69,7 @@ public class StoreOrderController {
     }
     
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER')")
+    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER') or hasAuthority('VIEW_MY_ORDERS')")
     public ResponseEntity<StoreOrderResponse> getOrderById(@PathVariable Long id) {
         StoreOrderResponse response = storeOrderService.getOrderById(id);
         return ResponseEntity.ok(response);
