@@ -11,20 +11,28 @@ import com.swp.ckms.repository.StoreWarehouseRepository;
 import com.swp.ckms.repository.specification.StoreSpecification;
 import com.swp.ckms.service.FranchiseStoreService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 
 
 import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class FranchiseStoreServiceImpl implements FranchiseStoreService {
 
     private final FranchiseStoreRepository storeRepository;
     private final StoreWarehouseRepository warehouseRepository;
+
+        @PersistenceContext
+        private EntityManager entityManager;
 
     @Override
     @Transactional
@@ -38,6 +46,8 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
                 .name(request.getName())
                 .address(request.getAddress())
                 .phoneNumber(request.getPhoneNumber())
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
                 .paymentCycle(request.getPaymentCycle() != null ? request.getPaymentCycle() : "MONTHLY")
                 .build();
 
@@ -48,10 +58,39 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
                 .store(savedStore)
                 .build();
 
-        StoreWarehouse savedWarehouse = Objects.requireNonNull(warehouseRepository.save(warehouse), "Saved warehouse cannot be null");
+                StoreWarehouse savedWarehouse;
+                try {
+                        savedWarehouse = Objects.requireNonNull(warehouseRepository.save(warehouse), "Saved warehouse cannot be null");
+                } catch (DataIntegrityViolationException ex) {
+                        if (!isWarehousePrimaryKeyConflict(ex)) {
+                                throw ex;
+                        }
+                        log.warn("Detected out-of-sync sequence for store_warehouses.warehouse_id, attempting recovery.");
+                        realignStoreWarehouseIdSequence();
+                        savedWarehouse = Objects.requireNonNull(warehouseRepository.save(warehouse), "Saved warehouse cannot be null");
+                }
 
         return mapToResponse(savedStore, savedWarehouse);
     }
+
+        private boolean isWarehousePrimaryKeyConflict(DataIntegrityViolationException ex) {
+                Throwable current = ex;
+                while (current != null) {
+                        String msg = current.getMessage();
+                        if (msg != null && msg.contains("store_warehouses_pkey")) {
+                                return true;
+                        }
+                        current = current.getCause();
+                }
+                return false;
+        }
+
+        private void realignStoreWarehouseIdSequence() {
+                entityManager.createNativeQuery(
+                                "SELECT setval(pg_get_serial_sequence('store_warehouses','warehouse_id'), " +
+                                                "COALESCE((SELECT MAX(warehouse_id) FROM store_warehouses), 1), true)"
+                ).getSingleResult();
+        }
 
     private StoreResponse mapToResponse(FranchiseStore store, StoreWarehouse warehouse) {
         return StoreResponse.builder()
@@ -59,6 +98,8 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
                 .name(store.getName())
                 .address(store.getAddress())
                 .phoneNumber(store.getPhoneNumber())
+                .latitude(store.getLatitude())
+                .longitude(store.getLongitude())
                 .paymentCycle(store.getPaymentCycle())
                 .warehouseId(warehouse != null ? warehouse.getWarehouseId() : null)
                 .build();
@@ -125,6 +166,8 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
         store.setName(request.getName());
         store.setAddress(request.getAddress());
         store.setPhoneNumber(request.getPhoneNumber());
+        store.setLatitude(request.getLatitude());
+        store.setLongitude(request.getLongitude());
         store.setPaymentCycle(
                 request.getPaymentCycle() != null
                         ? request.getPaymentCycle()

@@ -21,4 +21,8 @@ public class StoreUpdateRequest {
     
     private String phoneNumber;
 
+    private String latitude;
+
+    private String longitude;
+
 }
