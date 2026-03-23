@@ -36,7 +36,8 @@ public class CustomUserDetailsService implements UserDetailsService {
                 .username(user.getUsername())
                 .password(user.getPassword())
                 .authorities(authorities)
-                .disabled(!user.getIsActive())
+                // Account is disabled if status is NOT ACTIVE
+                .disabled(user.getStatus() != com.swp.ckms.enums.UserStatus.ACTIVE)
                 .build();
     }
 }
