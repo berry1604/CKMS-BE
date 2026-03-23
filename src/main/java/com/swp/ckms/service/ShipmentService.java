@@ -11,7 +11,7 @@ public interface ShipmentService {
     ShipmentResponse createShipment(CreateShipmentRequest request);
     ShipmentResponse prepareShipment(Long shipmentId);
     ShipmentResponse startTransit(Long shipmentId);
-    ShipmentResponse confirmDelivery(Long shipmentId, ConfirmDeliveryRequest request);
+    ShipmentResponse confirmDelivery(Long shipmentId, Long stopId, ConfirmDeliveryRequest request);
     ShipmentResponse cancelShipment(Long shipmentId, String reason);
     ShipmentResponse getShipmentById(Long shipmentId);
     Page<ShipmentResponse> getShipments(ShipmentStatus status, Pageable pageable);

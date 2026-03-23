@@ -44,6 +44,10 @@ public class ShipmentResponse {
     public static class StopResponse {
         private Long stopId;
         private Integer stopOrder;
+        private String status;
+        private LocalDateTime deliveredAt;
+        private Long confirmedByUserId;
+        private String confirmedByUsername;
         private Long storeId;
         private String storeName;
         private String storePhone;
