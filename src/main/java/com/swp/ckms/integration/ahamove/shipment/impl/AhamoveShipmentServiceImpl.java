@@ -1,5 +1,6 @@
 package com.swp.ckms.integration.ahamove.shipment.impl;
 
+import com.swp.ckms.integration.ahamove.config.AhamoveProperties;
 import com.swp.ckms.integration.ahamove.dto.request.AhamoveOrderRequest;
 import com.swp.ckms.integration.ahamove.dto.request.AhamoveOrderRequest.AhamoveItem;
 import com.swp.ckms.integration.ahamove.dto.request.AhamoveOrderRequest.AhamovePoint;
@@ -18,7 +19,6 @@ import com.swp.ckms.enums.OrderStatus;
 import com.swp.ckms.enums.ShipmentStatus;
 import com.swp.ckms.repository.ShipmentRepository;
 import com.swp.ckms.repository.StoreOrderRepository;
-import com.swp.ckms.service.impl.ShipmentFeeAllocationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -41,7 +41,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
     private final ShipmentRepository shipmentRepository;
     private final StoreOrderRepository storeOrderRepository;
     private final CentralKitchenRepository centralKitchenRepository;
-    private final ShipmentFeeAllocationService shipmentFeeAllocationService;
+    private final AhamoveProperties ahamoveProperties;
 
     @Override
     @Transactional
@@ -161,7 +161,6 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
 
                 if (newStatus == ShipmentStatus.DELIVERED) {
                 shipment.setDeliveredAt(LocalDateTime.now());
-                shipmentFeeAllocationService.allocateForDeliveredShipment(shipment);
                 } else if (newStatus == ShipmentStatus.CANCELLED) {
                 shipment.setCancelledAt(LocalDateTime.now());
                 }
@@ -254,7 +253,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
             .items(allItems)
             .remarks(shipment.getRemarks() != null ? shipment.getRemarks() 
                     : "Shipment #" + shipment.getShipmentId())
-            .callbackUrl("https://deprecatorily-nonmucilaginous-many.ngrok-free.dev/api/v1/webhooks/ahamove")
+            .callbackUrl(ahamoveProperties.getCallbackUrl())
             .build();
 }
 }
