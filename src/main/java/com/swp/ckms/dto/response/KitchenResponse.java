@@ -25,4 +25,6 @@ public class KitchenResponse {
     private String currentStatus;         // "IDLE" | "IN_PRODUCTION"
     private int activePlanCount;          // Số plan active hôm nay
     private BigDecimal todayUsedCapacity;  // Tổng sản lượng đã lên plan hôm nay
+
+    private Boolean isActive;
 }

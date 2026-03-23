@@ -28,4 +28,6 @@ public class KitchenCreateRequest {
     private Double longitude;
 
     private String phone;
+
+    private Boolean isActive;
 }
