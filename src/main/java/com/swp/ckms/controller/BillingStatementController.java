@@ -40,7 +40,7 @@ import java.util.stream.Collectors;
 public class BillingStatementController {
 
     private final BillingStatementService billingStatementService;
-    @Value("${frontend.url}")
+    @Value("${FRONTEND_URL=http://localhost:5173}")
     private String frontendUrl;
 
     @Value("${frontend.vnpay-return-path}")
