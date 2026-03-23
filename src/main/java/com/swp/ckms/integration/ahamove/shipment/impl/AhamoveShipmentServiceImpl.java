@@ -1,5 +1,6 @@
 package com.swp.ckms.integration.ahamove.shipment.impl;
 
+import com.swp.ckms.integration.ahamove.config.AhamoveProperties;
 import com.swp.ckms.integration.ahamove.dto.request.AhamoveOrderRequest;
 import com.swp.ckms.integration.ahamove.dto.request.AhamoveOrderRequest.AhamoveItem;
 import com.swp.ckms.integration.ahamove.dto.request.AhamoveOrderRequest.AhamovePoint;
@@ -61,6 +62,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
     private final InventoryTransactionRepository inventoryTransactionRepository;
     private final ShipmentSourcingRecordRepository shipmentSourcingRecordRepository;
     private final ShipmentFeeAllocationService shipmentFeeAllocationService;
+    private final AhamoveProperties ahamoveProperties;
 
     @Override
     @Transactional
@@ -488,7 +490,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
             .items(allItems)
             .remarks(shipment.getRemarks() != null ? shipment.getRemarks() 
                     : "Shipment #" + shipment.getShipmentId())
-            .callbackUrl("https://deprecatorily-nonmucilaginous-many.ngrok-free.dev/api/v1/webhooks/ahamove")
+            .callbackUrl(ahamoveProperties.getCallbackUrl())
             .build();
 }
 }
