@@ -24,4 +24,6 @@ public class KitchenUpdateRequest {
     private Double longitude;
 
     private String phone;
+
+    private Boolean isActive;
 }

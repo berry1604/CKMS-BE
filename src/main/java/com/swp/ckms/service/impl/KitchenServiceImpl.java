@@ -40,6 +40,7 @@ public class KitchenServiceImpl implements KitchenService {
                 .latitude(request.getLatitude())
                 .longitude(request.getLongitude())
                 .phone(request.getPhone())
+                .isActive(request.getIsActive() != null ? request.getIsActive() : true)
                 .build();
 
         CentralKitchen savedKitchen = kitchenRepository.save(kitchen);
@@ -69,6 +70,7 @@ public class KitchenServiceImpl implements KitchenService {
         if (request.getLatitude() != null) kitchen.setLatitude(request.getLatitude());
         if (request.getLongitude() != null) kitchen.setLongitude(request.getLongitude());
         if (request.getPhone() != null) kitchen.setPhone(request.getPhone());
+        if (request.getIsActive() != null) kitchen.setIsActive(request.getIsActive());
 
         return mapToResponse(kitchenRepository.save(kitchen));
     }
@@ -158,6 +160,7 @@ public class KitchenServiceImpl implements KitchenService {
                 .currentStatus(currentStatus)
                 .activePlanCount((int) activePlanCount)
                 .todayUsedCapacity(todayUsedCapacity)
+                .isActive(kitchen.getIsActive())
                 .build();
     }
 }

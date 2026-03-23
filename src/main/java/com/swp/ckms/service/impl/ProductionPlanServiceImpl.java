@@ -80,6 +80,9 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                     }
                 }
             }
+            if (kitchen.getIsActive() != null && !kitchen.getIsActive()) {
+                throw new BusinessRuleViolationException("Không thể tạo kế hoạch sản xuất cho bếp đang ngừng hoạt động.");
+            }
         } else {
             // Priority 2: Fallback to user's assigned kitchen
             kitchen = currentUser.getKitchen();

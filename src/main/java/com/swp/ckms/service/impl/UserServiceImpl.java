@@ -82,6 +82,9 @@ public class UserServiceImpl implements UserService {
         if (request.getKitchenId() != null) {
             kitchen = centralKitchenRepository.findById(request.getKitchenId())
                     .orElseThrow(() -> new RuntimeException("Kitchen not found"));
+            if (kitchen.getIsActive() != null && !kitchen.getIsActive()) {
+                throw new RuntimeException("Cannot assign user to an inactive kitchen");
+            }
         }
 
         User user = User.builder()
