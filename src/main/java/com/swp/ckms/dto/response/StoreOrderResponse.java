@@ -21,6 +21,8 @@ public class StoreOrderResponse {
     private String status;
     private Long batchId;
     private String batchCode;
+    private BigDecimal orderFee;
+    private BigDecimal shippingFee;
     private BigDecimal totalAmount;
     private java.time.LocalDate deliveryDate;
     private String storeName;

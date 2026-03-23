@@ -18,6 +18,7 @@ import com.swp.ckms.enums.OrderStatus;
 import com.swp.ckms.enums.ShipmentStatus;
 import com.swp.ckms.repository.ShipmentRepository;
 import com.swp.ckms.repository.StoreOrderRepository;
+import com.swp.ckms.service.impl.ShipmentFeeAllocationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -40,6 +41,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
     private final ShipmentRepository shipmentRepository;
     private final StoreOrderRepository storeOrderRepository;
     private final CentralKitchenRepository centralKitchenRepository;
+    private final ShipmentFeeAllocationService shipmentFeeAllocationService;
 
     @Override
     @Transactional
@@ -159,6 +161,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
 
                 if (newStatus == ShipmentStatus.DELIVERED) {
                 shipment.setDeliveredAt(LocalDateTime.now());
+                shipmentFeeAllocationService.allocateForDeliveredShipment(shipment);
                 } else if (newStatus == ShipmentStatus.CANCELLED) {
                 shipment.setCancelledAt(LocalDateTime.now());
                 }

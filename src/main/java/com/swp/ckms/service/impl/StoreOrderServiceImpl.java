@@ -29,6 +29,7 @@ import com.swp.ckms.exception.business.BusinessRuleViolationException;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.StoreOrderService;
+import com.swp.ckms.util.StoreOrderAmountUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.jpa.domain.Specification;
@@ -89,7 +90,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .collect(Collectors.toMap(Product::getId, p -> p));
 
         List<OrderDetail> details = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
+        BigDecimal orderFee = BigDecimal.ZERO;
 
         for (OrderItemRequest itemReq : request.getItems()) {
             Product product = productMap.get(itemReq.getProductId());
@@ -107,11 +108,13 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             details.add(detail);
             
             BigDecimal itemTotal = product.getPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity()));
-            totalAmount = totalAmount.add(itemTotal);
+            orderFee = orderFee.add(itemTotal);
         }
 
         order.setOrderDetails(details);
-        order.setTotalAmount(totalAmount);
+        order.setOrderFee(orderFee);
+        order.setShippingFee(BigDecimal.ZERO);
+        StoreOrderAmountUtils.syncTotalAmount(order);
 
         StoreOrder savedOrder = storeOrderRepository.save(order);
         return mapToOrderResponse(savedOrder);
@@ -203,7 +206,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
         // Update details
         order.getOrderDetails().clear();
-        BigDecimal totalAmount = BigDecimal.ZERO;
+        BigDecimal orderFee = BigDecimal.ZERO;
 
         List<Long> productIds = request.getItems().stream()
                 .map(com.swp.ckms.dto.request.OrderItemRequest::getProductId)
@@ -226,10 +229,11 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                     .build();
 
             order.getOrderDetails().add(detail);
-            totalAmount = totalAmount.add(product.getPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity())));
+            orderFee = orderFee.add(product.getPrice().multiply(BigDecimal.valueOf(itemReq.getQuantity())));
         }
 
-        order.setTotalAmount(totalAmount);
+        order.setOrderFee(orderFee);
+        StoreOrderAmountUtils.syncTotalAmount(order);
         return mapToOrderResponse(storeOrderRepository.save(order));
     }
 
@@ -429,7 +433,9 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .status(order.getStatus().name())
                 .batchId(order.getProductionPlan() != null ? order.getProductionPlan().getPlanId() : order.getBatchId())
                 .batchCode(order.getProductionPlan() != null ? order.getProductionPlan().getBatchCode() : null)
-                .totalAmount(order.getTotalAmount())
+            .orderFee(StoreOrderAmountUtils.zeroIfNull(order.getOrderFee()))
+            .shippingFee(StoreOrderAmountUtils.zeroIfNull(order.getShippingFee()))
+            .totalAmount(StoreOrderAmountUtils.calculateTotalAmount(order.getOrderFee(), order.getShippingFee()))
                 .deliveryDate(order.getDeliveryDate())
                 .storeName(order.getStore() != null ? order.getStore().getName() : null)
                 .storePhone(order.getStore() != null ? order.getStore().getPhoneNumber() : null)
@@ -623,6 +629,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .status(originalOrder.getStatus())
                 .approvedByUser(originalOrder.getApprovedByUser())
                 .approvedAt(originalOrder.getApprovedAt())
+            .shippingFee(BigDecimal.ZERO)
                 .orderDetails(new ArrayList<>())
                 .build();
 
@@ -647,8 +654,10 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             newOrder.getOrderDetails().add(newDetail);
         }
 
-        originalOrder.setTotalAmount(calculateTotal(originalOrder.getOrderDetails()));
-        newOrder.setTotalAmount(calculateTotal(newOrder.getOrderDetails()));
+        originalOrder.setOrderFee(calculateOrderFee(originalOrder.getOrderDetails()));
+        StoreOrderAmountUtils.syncTotalAmount(originalOrder);
+        newOrder.setOrderFee(calculateOrderFee(newOrder.getOrderDetails()));
+        StoreOrderAmountUtils.syncTotalAmount(newOrder);
 
         storeOrderRepository.save(originalOrder);
         StoreOrder savedNewOrder = storeOrderRepository.save(newOrder);
@@ -686,10 +695,8 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         return List.of(mapToOrderResponse(originalOrder), mapToOrderResponse(savedNewOrder));
     }
 
-    private BigDecimal calculateTotal(List<OrderDetail> details) {
-        return details.stream()
-                .map(d -> d.getUnitPrice().multiply(BigDecimal.valueOf(d.getQuantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    private BigDecimal calculateOrderFee(List<OrderDetail> details) {
+        return StoreOrderAmountUtils.calculateOrderFeeFromDetails(details);
     }
 
     private void createInvoiceForOrder(StoreOrder order) {
