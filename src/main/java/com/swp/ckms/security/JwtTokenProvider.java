@@ -3,8 +3,6 @@ package com.swp.ckms.security;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -17,36 +15,64 @@ public class JwtTokenProvider {
     @Value("${jwt.secret}")
     private String jwtSecret;
 
-    @Value("${jwt.expiration}")
+    @Value("${jwt.accessExpiration}")
     private long jwtExpiration;
 
     private SecretKey getSigningKey() {
         return Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateToken(Authentication authentication, Long userId) {
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+    public String generateToken(String username, Long userId, String role,
+                                Long storeId, Long coordinatorId, String scope) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + jwtExpiration);
 
-        return Jwts.builder()
-                .subject(userDetails.getUsername())
-                .claim("authorities", userDetails.getAuthorities())
+        JwtBuilder builder = Jwts.builder()
+                .subject(username)
                 .claim("userId", userId)
+                .claim("roles", new String[]{role})
+                .claim("scope", scope);
+
+        if (storeId != null) {
+            builder.claim("storeId", storeId);
+        }
+        if (coordinatorId != null) {
+            builder.claim("coordinatorId", coordinatorId);
+        }
+
+        return builder
                 .issuedAt(now)
                 .expiration(expiryDate)
                 .signWith(getSigningKey())
                 .compact();
     }
 
-    public String getUsernameFromToken(String token) {
-        Claims claims = Jwts.parser()
+    public Claims getClaimsFromToken(String token) {
+        return Jwts.parser()
                 .verifyWith(getSigningKey())
                 .build()
                 .parseSignedClaims(token)
                 .getPayload();
+    }
 
-        return claims.getSubject();
+    public String getUsernameFromToken(String token) {
+        return getClaimsFromToken(token).getSubject();
+    }
+
+    public Long getUserIdFromToken(String token) {
+        return getClaimsFromToken(token).get("userId", Long.class);
+    }
+
+    public Long getStoreIdFromToken(String token) {
+        return getClaimsFromToken(token).get("storeId", Long.class);
+    }
+
+    public Long getCoordinatorIdFromToken(String token) {
+        return getClaimsFromToken(token).get("coordinatorId", Long.class);
+    }
+
+    public String getScopeFromToken(String token) {
+        return getClaimsFromToken(token).get("scope", String.class);
     }
 
     public boolean validateToken(String token) {
@@ -59,5 +85,21 @@ public class JwtTokenProvider {
         } catch (JwtException | IllegalArgumentException e) {
             return false;
         }
+    }
+
+    // --- Aliases requested by user for JwtService standard ---
+    public String generateAccessToken(com.swp.ckms.entity.User user) {
+        Long storeId = user.getStore() != null ? user.getStore().getStoreId() : null;
+        Long coordinatorId = user.getKitchen() != null ? user.getKitchen().getKitchenId() : null;
+        String scope = user.getRole() != null ? user.getRole().getRoleName() : "USER";
+        return generateToken(user.getUsername(), user.getUserId(), scope, storeId, coordinatorId, scope);
+    }
+
+    public String generateRefreshToken(com.swp.ckms.entity.User user) {
+        return java.util.UUID.randomUUID().toString();
+    }
+
+    public String extractUsername(String token) {
+        return getUsernameFromToken(token);
     }
 }

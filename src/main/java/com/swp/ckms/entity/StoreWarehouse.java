@@ -24,4 +24,5 @@ public class StoreWarehouse {
 
     @Column(nullable = false)
     private String name;
+
 }

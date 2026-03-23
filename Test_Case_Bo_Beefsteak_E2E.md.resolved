@@ -1,0 +1,124 @@
+# Kịch bản Kiểm thử End-to-End: Bán thành phẩm Bò Beefsteak
+
+Kịch bản này được thiết kế để kiểm thử toàn bộ luồng nghiệp vụ lõi trong hệ thống dựa trên mã nguồn thực tế (Base Code) và thiết kế RBAC.
+
+---
+
+## Giai đoạn 1: Thiết lập Danh mục & Công thức (Manager / Admin)
+
+### 1.1 Tạo Danh mục & Nguyên liệu
+- **Actor**: `Manager` hoặc `Admin` (Quyền: `MANAGE_CATALOG`)
+- **Tạo Danh mục "Thịt Sơ Chế"**:
+  - `POST /api/v1/categories` -> `{"name": "Thịt Sơ Chế"}` (Lấy `categoryId: 5`)
+- **Tạo các Nguyên liệu thô**:
+  - `POST /api/v1/materials`
+  - Body (Thăn bò): `{"name": "Thịt bò thăn", "unit": "KG"}` (Lấy `matId: 10`)
+  - Body (Gia vị): `{"name": "Gia vị Beefsteak", "unit": "PIECE"}` (Lấy `matId: 11`)
+
+### 1.2 Thiết lập Sản phẩm & Công thức (Recipe)
+- **Actor**: `Manager` hoặc `Admin` (Quyền: `MANAGE_CATALOG` hoặc `CREATE_RECIPE`)
+- **Tạo Sản phẩm "Bò Beefsteak Sơ chế"**:
+  - `POST /api/v1/products`
+  - Body: `{"name": "Bò Beefsteak Sơ chế", "categoryId": 5, "price": 150000, "unit": "PIECE"}` (Lấy `productId: 20`)
+- **Thiết lập Công thức (Recipe)**:
+  - `POST /api/v1/recipes`
+  - Body:
+    ```json
+    {
+      "productId": 20,
+      "yield": 1,
+      "instructions": "Sơ chế thịt thăn, tẩm ướp gia vị theo định lượng.",
+      "recipeDetails": [
+        {"materialId": 10, "quantityNeeded": 0.25}, 
+        {"materialId": 11, "quantityNeeded": 1}
+      ]
+    }
+    ```
+
+---
+
+## Giai đoạn 2: Quản lý Kho & Đặt hàng (Kitchen Staff & Store Staff)
+
+### 2.1 Nhập kho nguyên liệu tại Bếp
+- **Actor**: `Kitchen Staff` hoặc `Admin` (Quyền: `UPDATE_KITCHEN_INVENTORY`)
+- **Nhập hàng vào kho bếp**:
+  - `POST /api/v1/kitchen-inventory/{warehouseId}/import/materials`
+  - Body:
+    ```json
+    [
+      {"itemId": 10, "quantity": 50, "expiryDate": "2026-12-31"},
+      {"itemId": 11, "quantity": 200, "expiryDate": "2026-12-31"}
+    ]
+    ```
+
+### 2.2 Cửa hàng đặt hàng
+- **Actor**: `Store Staff` (Quyền: `CREATE_STORE_ORDER`)
+- **Đặt 40 phần Bò Beefsteak Sơ chế**:
+  - `POST /api/v1/orders`
+  - Body: 
+    ```json
+    {
+      "storeId": 1, 
+      "items": [{"productId": 20, "quantity": 40}]
+    }
+    ```
+  - **Kết quả**: Đơn hàng `#ORD-100` được tạo, trạng thái `SUBMITTED`.
+
+---
+
+## Giai đoạn 3: Phê duyệt & Sản xuất (Coordinator & Kitchen Staff)
+
+### 3.1 Duyệt đơn hàng
+- **Actor**: `Coordinator` (Quyền: `APPROVE_STORE_ORDER`)
+- **Cập nhật trạng thái**:
+  - `PATCH /api/v1/orders/100/status` 
+  - Body: `{"status": "CONFIRMED"}`
+
+### 3.2 Lập kế hoạch sản xuất
+- **Actor**: `Coordinator` (Quyền: `ORGANIZE_PRODUCTION`)
+- **Tạo kế hoạch**:
+  - `POST /api/v1/production-plans` 
+  - Body: `{"storeOrderIds": [100], "plannedDate": "2026-03-05"}` (Lấy `planId: 50`)
+- **Chuyển sang Sẵn sàng (Ready)**:
+  - `PUT /api/v1/production-plans/50/ready` -> Trạng thái đổi sang `READY`.
+
+### 3.3 Thực thi sản xuất
+- **Actor**: `Kitchen Staff` (Quyền: `EXECUTE_PRODUCTION`)
+- **Bắt đầu**: `POST /api/v1/production-plans/50/start`.
+- **Hoàn thành**: `POST /api/v1/production-plans/50/finish`.
+
+---
+
+## Giai đoạn 4: Giao hàng & Nhận hàng (Coordinator, Kitchen Staff & Store Staff)
+
+### 4.1 Tạo Shipment & Giao hàng
+- **Actor**: `Coordinator` (Quyền: `CREATE_SHIPMENT`, `START_SHIPMENT`)
+- **Tạo Shipment**:
+  - `POST /api/v1/shipments`
+  - Body: `{"productionPlanId": 50, "storeId": 1, "storeOrderIds": [100], "driverName": "Nguyễn Văn A"}`
+- **Xuất kho giao hàng**:
+  - `PATCH /api/v1/shipments/{id}/transit` -> Trạng thái `IN_TRANSIT`.
+
+### 4.2 Xác nhận nhận hàng
+- **Actor**: `Store Staff` (Quyền: `CONFIRM_SHIPMENT`)
+- **Xác nhận**: `PATCH /api/v1/shipments/{id}/confirm`
+- **Kết quả**: Shipment -> `DELIVERED`, Order -> `COMPLETED`, Tồn kho Store tăng.
+
+---
+
+## Giai đoạn 5: Billing & Thanh toán (Admin / Manager)
+
+### 5.1 Tạo Bảng kê & Thanh toán
+- **Actor**: `Admin` (Quyền: `CONFIRM_PAYMENT`)
+- **Gom hóa đơn (Manual)**:
+  - `POST /api/v1/billing-statements/generate?storeId=1&periodStart=2026-03-01&periodEnd=z`
+- **Xác nhận thanh toán**:
+  - `PATCH /api/v1/billing-statements/{id}/pay`
+  - Body: 
+    ```json
+    {
+      "paymentMethodId": 1, 
+      "transactionReference": "TX-999", 
+      "note": "Payment for March"
+    }
+    ```

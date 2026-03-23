@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { 
+            font-family: 'Segoe UI', Helvetica, Arial, sans-serif; 
+            line-height: 1.6; 
+            background-color: #f9f9f9;
+            margin: 0;
+            padding: 20px;
+        }
+        .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            background-color: #ffffff;
+            border: 1px solid #e0e0e0; 
+            padding: 40px; 
+            border-radius: 16px;
+            text-align: center;
+        }
+        .header-title { color: #2E7D32; font-size: 28px; font-weight: bold; margin-bottom: 30px; }
+        .divider { border-top: 1px solid #f0f0f0; margin: 20px 0 40px 0; }
+        .greeting { font-size: 24px; font-weight: bold; color: #212121; margin-bottom: 20px; }
+        .content-text { color: #666; font-size: 16px; margin-bottom: 20px; text-align: left; }
+        .highlight { color: #212121; font-weight: bold; }
+        .info-box {
+            background-color: #f8f8f8;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: left;
+            margin: 20px 0;
+        }
+        .info-item { margin-bottom: 10px; font-size: 15px; }
+        .button { 
+            display: inline-block; 
+            padding: 15px 40px; 
+            background-color: #2E7D32; 
+            color: #ffffff !important; 
+            text-decoration: none; 
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 18px;
+            margin-top: 30px;
+        }
+        .footer { font-size: 13px; color: #9e9e9e; margin-top: 40px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-title">Central Kitchen Management System</div>
+        <div class="divider"></div>
+        
+        <div class="greeting">Hàng đang trên đường giao! 🚚</div>
+        
+        <div class="content-text">
+            Chào bạn, chuyến hàng cho cửa hàng <span class="highlight" th:text="${storeName}">Store Name</span> đã bắt đầu vận chuyển.
+        </div>
+        
+        <div class="info-box">
+            <div class="info-item"><strong>Mã Shipment:</strong> #<span th:text="${shipmentId}">100</span></div>
+            <div class="info-item"><strong>Tài xế:</strong> <span th:text="${driverName}">Nguyễn Văn A</span></div>
+            <div class="info-item"><strong>Số điện thoại:</strong> <span th:text="${driverPhone}">090xxxxxxx</span></div>
+            <div class="info-item"><strong>Xe:</strong> <span th:text="${vehicleInfo}">Xe tải 2T</span></div>
+        </div>
+        
+        <a th:if="${trackingLink != null}" th:href="${trackingLink}" class="button">Theo Dõi Hành Trình</a>
+
+        <div class="footer">
+            Vui lòng chuẩn bị nhân sự để nhận hàng.<br/>
+            Trân trọng, Đội ngũ điều phối CKMS.
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; border: 1px solid #ddd; }
+        .header { border-bottom: 2px solid #2E7D32; padding-bottom: 10px; margin-bottom: 20px; }
+        .header h2 { color: #2E7D32; margin: 0; }
+        .details { background: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .footer { font-size: 12px; color: #777; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px; }
+        .highlight { font-weight: bold; color: #212121; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Hệ thống CKMS - Thông báo trạng thái đơn hàng</h2>
+        </div>
+        
+        <p>Xin chào,</p>
+        
+        <div th:if="${originalOrderId != null}">
+            <p>Đơn hàng <span class="highlight">#<span th:text="${originalOrderId}"></span></span> đã được <span class="highlight">tách</span> thành đơn hàng mới <span class="highlight">#<span th:text="${newOrderId}"></span></span>.</p>
+            <p>Ngày giao hàng dự kiến: <span class="highlight" th:text="${deliveryDate}"></span></p>
+        </div>
+        
+        <div th:if="${newDeliveryDate != null}">
+            <p>Đơn hàng <span class="highlight">#<span th:text="${orderId}"></span></span> đã được <span class="highlight">dời ngày giao hàng</span>.</p>
+            <p>Ngày giao hàng mới: <span class="highlight" th:text="${newDeliveryDate}"></span></p>
+            <p>Trạng thái hiện tại: <span class="highlight" th:text="${status}"></span></p>
+        </div>
+
+        <p>Vui lòng kiểm tra chi tiết trên hệ thống.</p>
+        
+        <div class="footer">
+            Đây là email tự động, vui lòng không phản hồi.<br/>
+            © Central Kitchen Management System
+        </div>
+    </div>
+</body>
+</html>

@@ -1,4 +1,4 @@
-package com.swp.ckms.dto;
+package com.swp.ckms.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;

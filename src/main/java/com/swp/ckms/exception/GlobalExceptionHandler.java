@@ -15,7 +15,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import com.swp.ckms.dto.response.MissingMaterialResponse;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -47,7 +49,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({
         UserDisabledException.class,
-        AccessDeniedException.class
+        AccessDeniedException.class,
+        ForbiddenException.class
     })
     public ResponseEntity<ApiResponse<Void>> handleAccessDenied(Exception ex) {
         return buildResponse(HttpStatus.FORBIDDEN, ex.getMessage());
@@ -59,6 +62,17 @@ public class GlobalExceptionHandler {
     }
 
     // --- Business Exceptions ---
+    @ExceptionHandler(InsufficientMaterialException.class)
+    public ResponseEntity<ApiResponse<List<MissingMaterialResponse>>> handleInsufficientMaterial(InsufficientMaterialException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.<List<MissingMaterialResponse>>builder()
+                        .status(HttpStatus.CONFLICT.value())
+                        .message(ex.getMessage())
+                        .data(ex.getMissingMaterials())
+                        .timestamp(java.time.LocalDateTime.now())
+                        .build());
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ApiResponse<Void>> handleResourceNotFound(ResourceNotFoundException ex) {
         return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
@@ -66,6 +80,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ApiResponse<Void>> handleDuplicateResource(DuplicateResourceException ex) {
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateNameException.class)
+    public ResponseEntity<ApiResponse<Void>> handleDuplicateName(DuplicateNameException ex) {
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(CategoryInUseException.class)
+    public ResponseEntity<ApiResponse<Void>> handleCategoryInUse(CategoryInUseException ex) {
         return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
     }
 

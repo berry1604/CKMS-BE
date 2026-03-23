@@ -1,0 +1,53 @@
+package com.swp.ckms.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ShipmentResponse {
+    private Long shipmentId;
+    private List<StopResponse> stops;
+    private Long productionPlanId;
+    private String status;
+
+    private String ahamoveOrderId;
+    private String trackingLink;
+    private String ahamoveStatus;
+
+    private String driverName;
+    private String driverPhone;
+    private String vehicleInfo;
+    private BigDecimal shippingFee;
+    private String remarks;
+    private Long createdByUserId;
+    private String createdByUsername;
+    private Long confirmedByUserId;
+    private String confirmedByUsername;
+    private LocalDateTime createdAt;
+    private LocalDateTime shippedAt;
+    private LocalDateTime deliveredAt;
+    private List<Long> storeOrderIds;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StopResponse {
+        private Long stopId;
+        private Integer stopOrder;
+        private Long storeId;
+        private String storeName;
+        private String storePhone;
+        private String remarks;
+        private List<Long> storeOrderIds;
+    }
+}

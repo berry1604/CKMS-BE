@@ -3,6 +3,7 @@ package com.swp.ckms.entity;
 import com.swp.ckms.enums.UserGender;
 import com.swp.ckms.enums.UserStatus;
 import jakarta.persistence.*;
+import com.swp.ckms.enums.UserStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -33,22 +34,18 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String password;
 
     private String fullName;
 
-    @Column(unique = true)
-    private String phoneNumber;
-
-    private String address;
-
-    private String avatarUrl;
-
     @Enumerated(EnumType.STRING)
-    private UserGender gender;
+    @Column(nullable = false)
+    private UserStatus status;
 
-    private LocalDate dob; // Date of Birth
+    private String verificationTokenHash;
+
+    private java.time.LocalDateTime verificationTokenExpiresAt;
 
     @Builder.Default
     @Enumerated(EnumType.STRING)

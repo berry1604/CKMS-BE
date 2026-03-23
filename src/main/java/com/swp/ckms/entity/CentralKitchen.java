@@ -22,4 +22,16 @@ public class CentralKitchen {
     private String name;
 
     private String address;
+
+        @Builder.Default
+    @Column(precision = 19, scale = 2)
+    private java.math.BigDecimal maxDailyCapacity = java.math.BigDecimal.valueOf(200);
+
+    private Double latitude;
+    private Double longitude;
+    private String phone;
+
+    @Builder.Default
+    @Column(name = "is_active")
+    private Boolean isActive = true;
 }

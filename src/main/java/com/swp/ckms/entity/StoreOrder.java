@@ -1,5 +1,6 @@
 package com.swp.ckms.entity;
 
+import com.swp.ckms.enums.OrderStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -39,8 +40,8 @@ public class StoreOrder {
     private ProductionPlan productionPlan;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "shipment_id")
-    private Shipment shipment;
+    @JoinColumn(name = "shipment_stop_id")
+    private ShipmentStop shipmentStop;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invoice_id")
@@ -48,13 +49,26 @@ public class StoreOrder {
 
     private LocalDateTime orderDate;
 
+    private java.time.LocalDate deliveryDate;
+
     private BigDecimal orderFee;
 
     private BigDecimal totalAmount;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status; // DRAFT, SUBMITTED, APPROVED, PROCESSING, SHIPPED, COMPLETED, CANCELLED
+    private OrderStatus status; // SUBMITTED, REJECTED, GROUPED, CONFIRMED, PREPARING, READY, COMPLETED
+
+    private Long batchId; // used to group orders by coordinator
+
+    private LocalDateTime approvedAt;
+
+    @Version
+    private Long version;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<OrderDetail> orderDetails;
+    public Shipment getShipment() {
+        return shipmentStop != null ? shipmentStop.getShipment() : null;
+    }
 }
