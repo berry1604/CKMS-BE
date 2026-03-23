@@ -3,7 +3,6 @@ package com.swp.ckms.entity;
 import com.swp.ckms.enums.UserGender;
 import com.swp.ckms.enums.UserStatus;
 import jakarta.persistence.*;
-import com.swp.ckms.enums.UserStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -39,10 +38,6 @@ public class User {
 
     private String fullName;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private UserStatus status;
-
     private String verificationTokenHash;
 
     private java.time.LocalDateTime verificationTokenExpiresAt;
@@ -51,6 +46,9 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserStatus status = UserStatus.ACTIVE;
+
+    @Builder.Default
+    private Boolean isActive = true;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "role_id")
