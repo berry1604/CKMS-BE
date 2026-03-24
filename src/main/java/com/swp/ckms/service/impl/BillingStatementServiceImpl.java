@@ -436,7 +436,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     @Override
     @Transactional
     public void handleVnPayReturn(Map<String, String> params) {
-
+        log.info("VNPay Return called with params: {}", params);
         if (!paymentGateway.verifySignature(params)) {
             throw new InvalidRequestException("Invalid VNPay signature");
         }
@@ -495,7 +495,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     @Override
     @Transactional
     public Map<String, String> handleVnPayIpn(Map<String, String> params) {
-        log.info("Received IPN request from VNPay: {}", params);
+        log.info("VNPay IPN called with params: {}", params);
         Map<String, String> response = new java.util.HashMap<>();
 
         try {

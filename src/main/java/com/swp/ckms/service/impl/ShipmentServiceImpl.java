@@ -128,6 +128,12 @@ public class ShipmentServiceImpl implements ShipmentService {
                     throw new IllegalArgumentException("Order #" + order.getOrderId() 
                             + " does not belong to store #" + store.getStoreId());
                 }
+                if (order.getStatus() != OrderStatus.READY) {
+                    log.error("=> Lỗi: Order #{} chưa ở trạng thái READY (Status hiện tại: {})", 
+                              order.getOrderId(), order.getStatus());
+                    throw new IllegalStateException("Order #" + order.getOrderId() + " must be READY to be assigned to a shipment");
+                }
+                
                 if (order.getShipmentStop() != null) {
                     log.error("=> Lỗi: Order #{} đã được gán vào ShipmentStop #{}", 
                               order.getOrderId(), order.getShipmentStop().getStopId());
@@ -242,8 +248,8 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         Shipment shipment = getShipmentOrThrow(shipmentId);
 
-        if (shipment.getStatus() != ShipmentStatus.IN_TRANSIT) {
-            throw new IllegalStateException("Shipment must be IN_TRANSIT to confirm delivery. Current: " + shipment.getStatus());
+        if (shipment.getStatus() != ShipmentStatus.IN_TRANSIT && shipment.getStatus() != ShipmentStatus.ARRIVED) {
+            throw new IllegalStateException("Shipment must be IN_TRANSIT or ARRIVED to confirm delivery. Current: " + shipment.getStatus());
         }
 
         ShipmentStop stop = getStopOrThrow(shipment, stopId);
