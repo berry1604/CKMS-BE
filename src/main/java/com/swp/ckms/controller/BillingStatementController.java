@@ -150,11 +150,12 @@ public class BillingStatementController {
             HttpServletResponse response
     ) throws IOException {
 
-        log.info("BillingStatementController: handleVnPayReturn received with {} params", params.size());
+        System.out.println(">>> DEBUG: BillingStatementController: handleVnPayReturn received with " + params.size() + " params");
         try {
             billingStatementService.handleVnPayReturn(params);
         } catch (Exception e) {
-            log.error("VNPay return logic error: {}", e.getMessage(), e);
+            System.out.println(">>> DEBUG ERROR: VNPay return logic error: " + e.getMessage());
+            e.printStackTrace();
         }
 
         // encode params

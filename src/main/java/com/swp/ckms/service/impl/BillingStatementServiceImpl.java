@@ -436,8 +436,9 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     @Override
     @Transactional
     public void handleVnPayReturn(Map<String, String> params) {
-        log.info("VNPay Return called with params: {}", params);
+        System.out.println(">>> DEBUG: VNPay Return called with params: " + params);
         if (!paymentGateway.verifySignature(params)) {
+            System.out.println(">>> DEBUG: FAILED Signature Verification");
             throw new InvalidRequestException("Invalid VNPay signature");
         }
 
@@ -474,10 +475,12 @@ public class BillingStatementServiceImpl implements BillingStatementService {
             return;
         }
 
-        BigDecimal paidAmount = new BigDecimal(params.get("vnp_Amount"))
+        BigDecimal paidAmountFromVnp = new BigDecimal(params.get("vnp_Amount"))
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
-        if (paidAmount.compareTo(statement.getTotalAmount()) != 0) {
+        BigDecimal diff = paidAmountFromVnp.subtract(statement.getTotalAmount()).abs();
+        if (diff.compareTo(BigDecimal.ONE) > 0) {
+            System.out.println(">>> DEBUG FAILED: Amount mismatch. Paid=" + paidAmountFromVnp + ", Expected=" + statement.getTotalAmount());
             throw new InvalidRequestException("Payment amount mismatch");
         }
 
@@ -495,7 +498,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     @Override
     @Transactional
     public Map<String, String> handleVnPayIpn(Map<String, String> params) {
-        log.info("VNPay IPN called with params: {}", params);
+        System.out.println(">>> DEBUG: VNPay IPN called with params: " + params);
         Map<String, String> response = new java.util.HashMap<>();
 
         try {
@@ -542,10 +545,12 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 return response;
             }
 
-            BigDecimal paidAmount = new BigDecimal(params.get("vnp_Amount"))
+            BigDecimal paidAmountIpn = new BigDecimal(params.get("vnp_Amount"))
                     .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
-            if (paidAmount.compareTo(statement.getTotalAmount()) != 0) {
+            BigDecimal diffIpn = paidAmountIpn.subtract(statement.getTotalAmount()).abs();
+            if (diffIpn.compareTo(BigDecimal.ONE) > 0) {
+                System.out.println(">>> DEBUG IPN FAILED: Amount mismatch. Paid=" + paidAmountIpn + ", Expected=" + statement.getTotalAmount());
                 response.put("RspCode", "04");
                 response.put("Message", "Invalid amount");
                 return response;
