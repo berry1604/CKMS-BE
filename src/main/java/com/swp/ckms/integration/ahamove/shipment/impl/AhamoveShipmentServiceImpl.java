@@ -1,5 +1,9 @@
 package com.swp.ckms.integration.ahamove.shipment.impl;
 
+import com.swp.ckms.entity.*;
+import com.swp.ckms.enums.*;
+import com.swp.ckms.repository.*;
+import com.swp.ckms.integration.ahamove.config.AhamoveProperties;
 import com.swp.ckms.integration.ahamove.dto.request.AhamoveOrderRequest;
 import com.swp.ckms.integration.ahamove.dto.request.AhamoveOrderRequest.AhamoveItem;
 import com.swp.ckms.integration.ahamove.dto.request.AhamoveOrderRequest.AhamovePoint;
@@ -7,28 +11,14 @@ import com.swp.ckms.integration.ahamove.dto.response.AhamoveOrderResponse;
 import com.swp.ckms.integration.ahamove.service.AhamoveService;
 import com.swp.ckms.integration.ahamove.shipment.AhamoveShipmentService;
 import com.swp.ckms.integration.ahamove.dto.request.AhamoveWebhookRequest;
-import com.swp.ckms.entity.FranchiseStore;
-import com.swp.ckms.entity.CentralKitchen;
-import com.swp.ckms.entity.OrderDetail;
-import com.swp.ckms.entity.ShipmentStop;
-import com.swp.ckms.repository.CentralKitchenRepository;
-import com.swp.ckms.entity.Shipment;
-import com.swp.ckms.entity.StoreOrder;
-import com.swp.ckms.enums.OrderStatus;
-import com.swp.ckms.enums.ShipmentStatus;
-import com.swp.ckms.repository.ShipmentRepository;
-import com.swp.ckms.repository.StoreOrderRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.util.Optional;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-
-
+import java.util.*;
+import java.util.stream.Collectors;
 import java.math.BigDecimal;
-import java.util.List;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -39,7 +29,11 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
     private final AhamoveService ahamoveService;
     private final ShipmentRepository shipmentRepository;
     private final StoreOrderRepository storeOrderRepository;
-    private final CentralKitchenRepository centralKitchenRepository;
+    private final KitchenStockItemRepository kitchenStockItemRepository;
+    private final KitchenWarehouseRepository kitchenWarehouseRepository;
+    private final InventoryTransactionRepository inventoryTransactionRepository;
+    private final ShipmentSourcingRecordRepository shipmentSourcingRecordRepository;
+    private final AhamoveProperties ahamoveProperties;
 
     @Override
     @Transactional
@@ -50,11 +44,8 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
         String token = ahamoveService.getAccessToken();
 
         // B2: Lấy danh sách orders để build items
-        List<StoreOrder> orders = storeOrderRepository
-                .findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
 
         // B3: Build request từ dữ liệu Shipment
-        // AhamoveOrderRequest request = buildAhamoveRequest(shipment, orders, token);
         AhamoveOrderRequest request = buildAhamoveRequest(shipment);
 
         // B4: Gọi Ahamove tạo đơn
@@ -101,6 +92,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
             case "ASSIGNING" -> ShipmentStatus.PREPARED;
             case "PICKED UP", "ACCEPTED", "IN PROCESS" -> ShipmentStatus.IN_TRANSIT;
             case "COMPLETED"  -> ShipmentStatus.DELIVERED;
+            case "RETURNING", "RETURNED" -> ShipmentStatus.RETURNED;
             case "CANCELED", "CANCELLED", "FAILED"     -> ShipmentStatus.CANCELLED;
             default -> {
                 log.warn("Không nhận ra Ahamove status: {}", ahamoveStatus);
@@ -116,7 +108,9 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
             case "ASSIGNING" -> OrderStatus.READY;
             case "PICKED UP", "ACCEPTED", "IN PROCESS" -> OrderStatus.IN_TRANSIT;
             case "COMPLETED"  -> OrderStatus.DELIVERED;
-            case "CANCELED", "CANCELLED", "FAILED"     -> OrderStatus.CANCELLED;
+            case "RETURNING", "RETURNED" -> OrderStatus.RETURNED;
+            case "CANCELED", "CANCELLED" -> OrderStatus.CANCELLED;
+            case "FAILED" -> OrderStatus.DELIVERY_FAILED;
             default -> {
                 log.warn("Không map được Ahamove status cho order: {}", ahamoveStatus);
                 yield null;
@@ -142,6 +136,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
             return false;
         }
         Shipment shipment = optShipment.get();
+        ShipmentStatus oldStatus = shipment.getStatus();
         shipment.setAhamoveStatus(request.getStatus());
         if(request.getSupplierName() != null && !request.getSupplierName().isEmpty()) {
             shipment.setDriverName(request.getSupplierName());
@@ -149,42 +144,258 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
         if(request.getSupplierMobile() != null && !request.getSupplierMobile().isEmpty()) {
             shipment.setDriverPhone(request.getSupplierMobile());
         }
+
         ShipmentStatus newStatus = mapAhamoveStatus(request.getStatus());
-        OrderStatus newOrderStatus = mapAhamoveOrderStatus(request.getStatus());
 
-        if (newStatus != null && newStatus != shipment.getStatus()) {
-                log.info("Shipment #{} cập nhật status: {} -> {}",
-                        shipment.getShipmentId(), shipment.getStatus(), newStatus);
-                shipment.setStatus(newStatus);
-
-                if (newStatus == ShipmentStatus.DELIVERED) {
-                shipment.setDeliveredAt(LocalDateTime.now());
-                } else if (newStatus == ShipmentStatus.CANCELLED) {
-                shipment.setCancelledAt(LocalDateTime.now());
-                }
+        if (shipment.getStops() != null && !shipment.getStops().isEmpty()) {
+            reconcileStopsFromWebhookPath(shipment, request);
         }
 
-        if (newOrderStatus != null) {
-            List<StoreOrder> orders = storeOrderRepository
-                    .findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
-
-            int changedCount = 0;
-            for (StoreOrder order : orders) {
-                if (order.getStatus() != newOrderStatus) {
-                    order.setStatus(newOrderStatus);
-                    changedCount++;
-                }
+        if (isAllStopsArrivedOrDelivered(shipment)) {
+            if (shipment.getStatus() != ShipmentStatus.DELIVERED) {
+                shipment.setStatus(ShipmentStatus.ARRIVED);
             }
+            if (shipment.getDeliveredAt() == null) {
+                shipment.setDeliveredAt(LocalDateTime.now());
+            }
+        } else if (newStatus == ShipmentStatus.CANCELLED || newStatus == ShipmentStatus.RETURNED) {
+            releaseUndeliveredOrders(shipment,
+                    newStatus == ShipmentStatus.RETURNED ? ShipmentStopStatus.RETURNED : ShipmentStopStatus.CANCELLED,
+                    newStatus == ShipmentStatus.RETURNED ? OrderStatus.RETURNED : OrderStatus.CANCELLED);
+            restoreKitchenStockForUndelivered(shipment, "Webhook " + newStatus + " from Ahamove");
+            shipment.setStatus(newStatus);
+            shipment.setCancelledAt(LocalDateTime.now());
+        } else if (newStatus != null && oldStatus != ShipmentStatus.DELIVERED) {
+            shipment.setStatus(newStatus);
+            if (newStatus == ShipmentStatus.CANCELLED) {
+                shipment.setCancelledAt(LocalDateTime.now());
+            }
+        }
 
-            if (changedCount > 0) {
-                storeOrderRepository.saveAll(orders);
-                log.info("Shipment #{} reconcile {} order(s) -> {} từ webhook status '{}'",
-                        shipment.getShipmentId(), changedCount, newOrderStatus, request.getStatus());
+        if (request.getPath() == null || request.getPath().isEmpty()) {
+            // Fallback for webhook payload without per-stop path information.
+            OrderStatus fallbackOrderStatus = mapAhamoveOrderStatus(request.getStatus());
+            if (fallbackOrderStatus != null && shipment.getStops() != null && shipment.getStops().size() == 1) {
+                ShipmentStop onlyStop = shipment.getStops().get(0);
+                if (fallbackOrderStatus == OrderStatus.DELIVERED) {
+                    markStopArrived(onlyStop, null);
+                    List<StoreOrder> stopOrders = storeOrderRepository.findByShipmentStop_StopId(onlyStop.getStopId());
+                    for (StoreOrder order : stopOrders) {
+                        order.setStatus(OrderStatus.ARRIVED);
+                    }
+                    storeOrderRepository.saveAll(stopOrders);
+                }
             }
         }
 
         shipmentRepository.save(shipment);
         return true;
+    }
+
+    private void reconcileStopsFromWebhookPath(Shipment shipment, AhamoveWebhookRequest request) {
+        List<ShipmentStop> stops = shipment.getStops().stream()
+                .sorted(Comparator.comparing(ShipmentStop::getStopOrder))
+                .toList();
+
+        List<AhamoveWebhookRequest.AhamovePathPoint> pathPoints = request.getPath();
+        if (pathPoints == null || pathPoints.isEmpty()) {
+            return;
+        }
+
+        for (ShipmentStop stop : stops) {
+            int pathIndex = stop.getStopOrder() == null ? -1 : stop.getStopOrder();
+            if (pathIndex < 1 || pathIndex >= pathPoints.size()) {
+                continue;
+            }
+
+            String stopRawStatus = pathPoints.get(pathIndex).getStatus();
+            OrderStatus orderStatus = mapAhamoveOrderStatus(stopRawStatus);
+            if (orderStatus == null) {
+                continue;
+            }
+
+            if (orderStatus == OrderStatus.DELIVERED) {
+                markStopArrived(stop, request);
+                List<StoreOrder> stopOrders = storeOrderRepository.findByShipmentStop_StopId(stop.getStopId());
+                boolean changed = false;
+                for (StoreOrder order : stopOrders) {
+                    if (order.getStatus() != OrderStatus.ARRIVED && order.getStatus() != OrderStatus.DELIVERED) {
+                        order.setStatus(OrderStatus.ARRIVED);
+                        changed = true;
+                    }
+                }
+                if (changed) {
+                    storeOrderRepository.saveAll(stopOrders);
+                }
+                continue;
+            }
+
+            if (stop.getStatus() == ShipmentStopStatus.DELIVERED) {
+                continue;
+            }
+
+            ShipmentStopStatus stopStatus = toStopStatus(orderStatus);
+            stop.setStatus(stopStatus);
+
+            List<StoreOrder> stopOrders = storeOrderRepository.findByShipmentStop_StopId(stop.getStopId());
+            for (StoreOrder order : stopOrders) {
+                if (orderStatus == OrderStatus.CANCELLED
+                        || orderStatus == OrderStatus.RETURNED
+                        || orderStatus == OrderStatus.DELIVERY_FAILED) {
+                    order.setShipmentStop(null);
+                    order.setStatus(OrderStatus.READY);
+                } else {
+                    order.setStatus(orderStatus);
+                }
+            }
+            storeOrderRepository.saveAll(stopOrders);
+        }
+    }
+
+    private void markStopArrived(ShipmentStop stop, AhamoveWebhookRequest request) {
+        if (stop.getStatus() == ShipmentStopStatus.DELIVERED || stop.getStatus() == ShipmentStopStatus.ARRIVED) {
+            return;
+        }
+        stop.setStatus(ShipmentStopStatus.ARRIVED);
+        stop.setDeliveredAt(LocalDateTime.now());
+        if (request != null && request.getComment() != null && !request.getComment().isBlank()) {
+            stop.setRemarks(stop.getRemarks() != null
+                    ? stop.getRemarks() + " | Webhook(Arrived): " + request.getComment()
+                    : "Webhook(Arrived): " + request.getComment());
+        }
+    }
+
+    private boolean isAllStopsArrivedOrDelivered(Shipment shipment) {
+        return shipment.getStops().stream()
+                .allMatch(s -> s.getStatus() == ShipmentStopStatus.ARRIVED || s.getStatus() == ShipmentStopStatus.DELIVERED);
+    }
+
+    private ShipmentStopStatus toStopStatus(OrderStatus orderStatus) {
+        if (orderStatus == null) {
+            return ShipmentStopStatus.PENDING;
+        }
+        return switch (orderStatus) {
+            case DELIVERED -> ShipmentStopStatus.DELIVERED;
+            case RETURNED -> ShipmentStopStatus.RETURNED;
+            case CANCELLED, DELIVERY_FAILED -> ShipmentStopStatus.CANCELLED;
+            case IN_TRANSIT -> ShipmentStopStatus.IN_TRANSIT;
+            default -> ShipmentStopStatus.PENDING;
+        };
+    }
+
+    private boolean isAllStopsDelivered(Shipment shipment) {
+        return shipment.getStops() != null
+                && !shipment.getStops().isEmpty()
+                && shipment.getStops().stream().allMatch(stop -> stop.getStatus() == ShipmentStopStatus.DELIVERED);
+    }
+
+    private void releaseUndeliveredOrders(
+            Shipment shipment,
+            ShipmentStopStatus stopStatus,
+            OrderStatus finalStopOrderStatus
+    ) {
+        List<ShipmentStop> stops = shipment.getStops() == null ? List.of() : shipment.getStops();
+        for (ShipmentStop stop : stops) {
+            if (stop.getStatus() == ShipmentStopStatus.DELIVERED) {
+                continue;
+            }
+
+            List<StoreOrder> stopOrders = storeOrderRepository.findByShipmentStop_StopId(stop.getStopId());
+            for (StoreOrder order : stopOrders) {
+                order.setShipmentStop(null);
+                order.setStatus(OrderStatus.READY);
+            }
+            storeOrderRepository.saveAll(stopOrders);
+
+            stop.setStatus(stopStatus);
+            if (finalStopOrderStatus == OrderStatus.RETURNED) {
+                stop.setRemarks(stop.getRemarks() != null
+                        ? stop.getRemarks() + " | Returned by carrier"
+                        : "Returned by carrier");
+            }
+        }
+    }
+
+    private void restoreKitchenStockForUndelivered(Shipment shipment, String note) {
+        if (shipment.getStops() == null || shipment.getStops().isEmpty()) {
+            return;
+        }
+
+        List<StoreOrder> deliveredOrders = new ArrayList<>();
+        for (ShipmentStop stop : shipment.getStops()) {
+            if (stop.getStatus() == ShipmentStopStatus.DELIVERED) {
+                deliveredOrders.addAll(storeOrderRepository.findByShipmentStop_StopId(stop.getStopId()));
+            }
+        }
+
+        Map<Long, BigDecimal> deliveredDemandByProduct = new HashMap<>();
+        for (StoreOrder order : deliveredOrders) {
+            for (OrderDetail detail : order.getOrderDetails()) {
+                deliveredDemandByProduct.merge(
+                        detail.getProduct().getId(),
+                        BigDecimal.valueOf(detail.getQuantity()),
+                        BigDecimal::add
+                );
+            }
+        }
+
+        List<ShipmentSourcingRecord> records = shipmentSourcingRecordRepository.findByShipment_ShipmentId(shipment.getShipmentId());
+        if (records.isEmpty()) {
+            return;
+        }
+
+        Map<Long, BigDecimal> sourcedByProduct = records.stream()
+                .collect(Collectors.groupingBy(
+                        record -> record.getProduct().getId(),
+                        Collectors.mapping(ShipmentSourcingRecord::getQuantity,
+                                Collectors.reducing(BigDecimal.ZERO, BigDecimal::add))
+                ));
+
+        KitchenWarehouse kitchenWarehouse = kitchenWarehouseRepository.findById(1L)
+                .orElseThrow(() -> new IllegalStateException("Central Kitchen Warehouse not found"));
+
+        for (Map.Entry<Long, BigDecimal> sourced : sourcedByProduct.entrySet()) {
+            Long productId = sourced.getKey();
+            BigDecimal undeliveredQty = sourced.getValue().subtract(
+                    deliveredDemandByProduct.getOrDefault(productId, BigDecimal.ZERO)
+            );
+
+            if (undeliveredQty.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            List<KitchenStockItem> stocks = kitchenStockItemRepository
+                    .findByWarehouse_WarehouseIdAndProduct_Id(kitchenWarehouse.getWarehouseId(), productId);
+            KitchenStockItem target = stocks.stream().findFirst().orElseGet(() -> {
+                ShipmentSourcingRecord recordRef = records.stream()
+                        .filter(r -> Objects.equals(r.getProduct().getId(), productId))
+                        .findFirst()
+                        .orElseThrow(() -> new IllegalStateException("No sourcing record for product " + productId));
+                KitchenStockItem created = KitchenStockItem.builder()
+                        .warehouse(kitchenWarehouse)
+                        .product(recordRef.getProduct())
+                        .quantity(BigDecimal.ZERO)
+                        .expiryDate(recordRef.getExpiryDate())
+                        .productionPlan(recordRef.getProductionPlan())
+                        .build();
+                return kitchenStockItemRepository.save(created);
+            });
+
+            target.setQuantity(target.getQuantity().add(undeliveredQty));
+            kitchenStockItemRepository.save(target);
+
+            InventoryTransaction tx = InventoryTransaction.builder()
+                    .product(target.getProduct())
+                    .quantity(undeliveredQty)
+                    .type(InventoryTransactionType.KITCHEN_ADJUST)
+                    .refId(shipment.getShipmentId())
+                    .kitchenWarehouse(kitchenWarehouse)
+                    .expiryDate(target.getExpiryDate())
+                    .note(note)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            inventoryTransactionRepository.save(tx);
+        }
     }
 
     // ==================== Private Helpers ====================
@@ -221,13 +432,17 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
         
         path.add(AhamovePoint.builder()
                 .address(store.getAddress())
-                .lat(store.getLatitude() != null ? Double.parseDouble(store.getLatitude()) : kitchen.getLatitude())
-                .lng(store.getLongitude() != null ? Double.parseDouble(store.getLongitude()) : kitchen.getLongitude())
+                .lat(store.getLatitude() != null ? Double.parseDouble(store.getLatitude()) : 0.0)
+                .lng(store.getLongitude() != null ? Double.parseDouble(store.getLongitude()) : 0.0)
                 .name(store.getName())
                 .mobile(store.getPhoneNumber() != null ? store.getPhoneNumber() : "")
                 .remarks(stop.getRemarks() != null ? stop.getRemarks() : "Giao hàng cho " + store.getName())
-                // .trackingNumber("STOP-" + stop.getStopId()) // Để tracking từng điểm
+                .trackingNumber("STOP-" + stop.getStopId()) // Bây giờ đã có thể sử dụng sau khi update DTO
                 .build());
+
+        if (store.getLatitude() == null || store.getLongitude() == null) {
+            log.error("Cửa hàng ID {} ({}) thiếu tọa độ Lat/Lng! AhaMove có thể định vị sai.", store.getStoreId(), store.getName());
+        }
 
         // Build items cho điểm này
         for (StoreOrder order : stop.getStoreOrders()) {
@@ -251,7 +466,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
             .items(allItems)
             .remarks(shipment.getRemarks() != null ? shipment.getRemarks() 
                     : "Shipment #" + shipment.getShipmentId())
-            .callbackUrl("https://deprecatorily-nonmucilaginous-many.ngrok-free.dev/api/v1/webhooks/ahamove")
+            .callbackUrl(ahamoveProperties.getCallbackUrl())
             .build();
 }
 }

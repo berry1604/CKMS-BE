@@ -13,11 +13,8 @@ import com.swp.ckms.entity.BillingStatement;
 import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.Invoice;
 import com.swp.ckms.entity.PaymentMethod;
-import com.swp.ckms.entity.Shipment;
-import com.swp.ckms.entity.StoreOrder;
 import com.swp.ckms.enums.BillingStatementStatus;
 import com.swp.ckms.enums.InvoiceStatus;
-import com.swp.ckms.enums.ShipmentStatus;
 import com.swp.ckms.exception.business.DuplicateResourceException;
 import com.swp.ckms.exception.business.ForbiddenException;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
@@ -30,6 +27,7 @@ import com.swp.ckms.repository.PaymentMethodRepository;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.BillingStatementService;
+import com.swp.ckms.util.StoreOrderAmountUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -55,8 +53,6 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     private final InvoiceRepository invoiceRepository;
     private final FranchiseStoreRepository franchiseStoreRepository;
     private final PaymentMethodRepository paymentMethodRepository;
-    private final com.swp.ckms.repository.ShipmentRepository shipmentRepository;
-    private final com.swp.ckms.repository.StoreOrderRepository storeOrderRepository;
     private final PaymentGateway paymentGateway;
     private final com.swp.ckms.service.NotificationService notificationService;
     private final com.swp.ckms.util.RecipientResolver recipientResolver;
@@ -84,12 +80,12 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 storeId, targetStatuses, startDateTime, endDateTime);
 
         BigDecimal orderTotal = invoices.stream()
-                .map(Invoice::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+            .map(this::extractOrderFee)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        List<Shipment> shipments = shipmentRepository.findDistinctByStops_Store_StoreIdAndStatusAndDeliveredAtBetween(
-            storeId, ShipmentStatus.DELIVERED, startDateTime, endDateTime);
-        BigDecimal shippingTotal = calculateAllocatedShippingTotal(shipments, storeId);
+        BigDecimal shippingTotal = invoices.stream()
+            .map(this::extractShippingFee)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal totalAmount = orderTotal.add(shippingTotal);
 
@@ -197,12 +193,12 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 }
 
                 BigDecimal orderTotal = invoices.stream()
-                        .map(Invoice::getAmount)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    .map(this::extractOrderFee)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-                List<Shipment> shipments = shipmentRepository.findDistinctByStops_Store_StoreIdAndStatusAndDeliveredAtBetween(
-                    storeId, ShipmentStatus.DELIVERED, startDateTime, endDateTime);
-                BigDecimal shippingTotal = calculateAllocatedShippingTotal(shipments, storeId);
+                BigDecimal shippingTotal = invoices.stream()
+                    .map(this::extractShippingFee)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                 BigDecimal totalAmount = orderTotal.add(shippingTotal);
 
@@ -424,65 +420,25 @@ public class BillingStatementServiceImpl implements BillingStatementService {
         );
     }
 
-    private BigDecimal calculateAllocatedShippingTotal(List<Shipment> shipments, Long storeId) {
-        BigDecimal total = BigDecimal.ZERO;
-        for (Shipment shipment : shipments) {
-            BigDecimal allocated = allocateShipmentFeeForStore(shipment, storeId);
-            total = total.add(allocated);
+    private BigDecimal extractOrderFee(Invoice invoice) {
+        if (invoice == null || invoice.getOrder() == null) {
+            return BigDecimal.ZERO;
         }
-        return total;
+        return StoreOrderAmountUtils.zeroIfNull(invoice.getOrder().getOrderFee());
     }
 
-    private BigDecimal allocateShipmentFeeForStore(Shipment shipment, Long storeId) {
-        if (shipment.getShippingFee() == null || shipment.getShippingFee().compareTo(BigDecimal.ZERO) <= 0) {
+    private BigDecimal extractShippingFee(Invoice invoice) {
+        if (invoice == null || invoice.getOrder() == null) {
             return BigDecimal.ZERO;
         }
-
-        List<StoreOrder> shipmentOrders = storeOrderRepository.findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
-
-        BigDecimal shipmentOrderValue = shipmentOrders.stream()
-                .map(this::resolveOrderValue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        if (shipmentOrderValue.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ZERO;
-        }
-
-        BigDecimal storeOrderValue = shipmentOrders.stream()
-                .filter(order -> order.getStore() != null && storeId.equals(order.getStore().getStoreId()))
-                .map(this::resolveOrderValue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        if (storeOrderValue.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ZERO;
-        }
-
-        return shipment.getShippingFee()
-                .multiply(storeOrderValue)
-                .divide(shipmentOrderValue, 2, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal resolveOrderValue(StoreOrder order) {
-        if (order == null) {
-            return BigDecimal.ZERO;
-        }
-        if (order.getTotalAmount() != null && order.getTotalAmount().compareTo(BigDecimal.ZERO) > 0) {
-            return order.getTotalAmount();
-        }
-        if (order.getInvoice() != null && order.getInvoice().getAmount() != null
-                && order.getInvoice().getAmount().compareTo(BigDecimal.ZERO) > 0) {
-            return order.getInvoice().getAmount();
-        }
-        if (order.getOrderFee() != null && order.getOrderFee().compareTo(BigDecimal.ZERO) > 0) {
-            return order.getOrderFee();
-        }
-        return BigDecimal.ZERO;
+        return StoreOrderAmountUtils.zeroIfNull(invoice.getOrder().getShippingFee());
     }
     @Override
     @Transactional
     public void handleVnPayReturn(Map<String, String> params) {
-
+        System.out.println(">>> DEBUG: VNPay Return called with params: " + params);
         if (!paymentGateway.verifySignature(params)) {
+            System.out.println(">>> DEBUG: FAILED Signature Verification");
             throw new InvalidRequestException("Invalid VNPay signature");
         }
 
@@ -519,10 +475,12 @@ public class BillingStatementServiceImpl implements BillingStatementService {
             return;
         }
 
-        BigDecimal paidAmount = new BigDecimal(params.get("vnp_Amount"))
+        BigDecimal paidAmountFromVnp = new BigDecimal(params.get("vnp_Amount"))
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
-        if (paidAmount.compareTo(statement.getTotalAmount()) != 0) {
+        BigDecimal diff = paidAmountFromVnp.subtract(statement.getTotalAmount()).abs();
+        if (diff.compareTo(BigDecimal.ONE) > 0) {
+            System.out.println(">>> DEBUG FAILED: Amount mismatch. Paid=" + paidAmountFromVnp + ", Expected=" + statement.getTotalAmount());
             throw new InvalidRequestException("Payment amount mismatch");
         }
 
@@ -540,7 +498,7 @@ public class BillingStatementServiceImpl implements BillingStatementService {
     @Override
     @Transactional
     public Map<String, String> handleVnPayIpn(Map<String, String> params) {
-        log.info("Received IPN request from VNPay: {}", params);
+        System.out.println(">>> DEBUG: VNPay IPN called with params: " + params);
         Map<String, String> response = new java.util.HashMap<>();
 
         try {
@@ -587,10 +545,12 @@ public class BillingStatementServiceImpl implements BillingStatementService {
                 return response;
             }
 
-            BigDecimal paidAmount = new BigDecimal(params.get("vnp_Amount"))
+            BigDecimal paidAmountIpn = new BigDecimal(params.get("vnp_Amount"))
                     .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
 
-            if (paidAmount.compareTo(statement.getTotalAmount()) != 0) {
+            BigDecimal diffIpn = paidAmountIpn.subtract(statement.getTotalAmount()).abs();
+            if (diffIpn.compareTo(BigDecimal.ONE) > 0) {
+                System.out.println(">>> DEBUG IPN FAILED: Amount mismatch. Paid=" + paidAmountIpn + ", Expected=" + statement.getTotalAmount());
                 response.put("RspCode", "04");
                 response.put("Message", "Invalid amount");
                 return response;

@@ -11,4 +11,5 @@ public class AhamoveProperties {
     private String baseUrl;
     private String key;
     private String phone;
+    private String callbackUrl;
 }

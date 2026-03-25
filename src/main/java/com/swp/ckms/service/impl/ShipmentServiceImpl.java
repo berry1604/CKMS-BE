@@ -6,6 +6,7 @@ import com.swp.ckms.dto.response.ShipmentResponse;
 import com.swp.ckms.dto.request.CreateShipmentRequest.DropPointRequest;
 import com.swp.ckms.enums.ProductionPlanStatus;
 import com.swp.ckms.entity.*;
+import com.swp.ckms.enums.ShipmentStopStatus;
 import com.swp.ckms.enums.OrderStatus;
 import com.swp.ckms.enums.ShipmentStatus;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
@@ -28,9 +29,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -57,6 +60,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final com.swp.ckms.service.NotificationService notificationService;
     private final com.swp.ckms.util.RecipientResolver recipientResolver;
     private final ShipmentStopRepository shipmentStopRepository;
+    private final ShipmentFeeAllocationService shipmentFeeAllocationService;
     
 
     @Override
@@ -105,6 +109,7 @@ public class ShipmentServiceImpl implements ShipmentService {
                     .shipment(savedShipment)
                     .store(store)
                     .stopOrder(stopOrder++)
+                    .status(ShipmentStopStatus.PENDING)
                     .remarks(dropPoint.getRemarks())
                     .build();
 
@@ -123,6 +128,12 @@ public class ShipmentServiceImpl implements ShipmentService {
                     throw new IllegalArgumentException("Order #" + order.getOrderId() 
                             + " does not belong to store #" + store.getStoreId());
                 }
+                if (order.getStatus() != OrderStatus.READY) {
+                    log.error("=> Lỗi: Order #{} chưa ở trạng thái READY (Status hiện tại: {})", 
+                              order.getOrderId(), order.getStatus());
+                    throw new IllegalStateException("Order #" + order.getOrderId() + " must be READY to be assigned to a shipment");
+                }
+                
                 if (order.getShipmentStop() != null) {
                     log.error("=> Lỗi: Order #{} đã được gán vào ShipmentStop #{}", 
                               order.getOrderId(), order.getShipmentStop().getStopId());
@@ -171,6 +182,13 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         shipment.setStatus(ShipmentStatus.IN_TRANSIT);
         shipment.setShippedAt(LocalDateTime.now());
+        if (shipment.getStops() != null) {
+            for (ShipmentStop stop : shipment.getStops()) {
+                if (stop.getStatus() == ShipmentStopStatus.PENDING) {
+                    stop.setStatus(ShipmentStopStatus.IN_TRANSIT);
+                }
+            }
+        }
         
         sourceAndDeductStock(shipment);
 
@@ -221,8 +239,7 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     @Override
-    public ShipmentResponse confirmDelivery(Long shipmentId, ConfirmDeliveryRequest request) {
-        // Store staff confirms receiving goods
+    public ShipmentResponse confirmDelivery(Long shipmentId, Long stopId, ConfirmDeliveryRequest request) {
         UserContext ctx = SecurityUtils.getCurrentUserContext();
         if (ctx == null) throw new AccessDeniedException("Unauthorized");
 
@@ -231,44 +248,51 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         Shipment shipment = getShipmentOrThrow(shipmentId);
 
-        if (shipment.getStatus() != ShipmentStatus.IN_TRANSIT) {
-            throw new IllegalStateException("Shipment must be IN_TRANSIT to confirm delivery. Current: " + shipment.getStatus());
+        if (shipment.getStatus() != ShipmentStatus.IN_TRANSIT && shipment.getStatus() != ShipmentStatus.ARRIVED) {
+            throw new IllegalStateException("Shipment must be IN_TRANSIT or ARRIVED to confirm delivery. Current: " + shipment.getStatus());
         }
 
-        // Store staff can only confirm their own store's shipment
+        ShipmentStop stop = getStopOrThrow(shipment, stopId);
+        if (stop.getStatus() == ShipmentStopStatus.DELIVERED) {
+            return mapToResponse(shipment);
+        }
+
         if ("STORE".equalsIgnoreCase(ctx.getScope())) {
-            if (!hasStoreAccess(shipment, ctx.getStoreId())) {
-                throw new AccessDeniedException("You can only confirm deliveries for your own store");
+            if (!hasStoreAccessToStop(stop, ctx.getStoreId())) {
+                throw new AccessDeniedException("You can only confirm deliveries for your own store stop");
             }
         }
 
-        // Update shipment
-        shipment.setStatus(ShipmentStatus.DELIVERED);
-        shipment.setDeliveredAt(LocalDateTime.now());
-        shipment.setConfirmedBy(currentUser);
+        stop.setStatus(ShipmentStopStatus.DELIVERED);
+        stop.setDeliveredAt(LocalDateTime.now());
+        stop.setConfirmedBy(currentUser);
 
         if (request != null && request.getFeedbackNote() != null) {
-            shipment.setRemarks(shipment.getRemarks() != null
-                    ? shipment.getRemarks() + " | Feedback: " + request.getFeedbackNote()
+            stop.setRemarks(stop.getRemarks() != null
+                    ? stop.getRemarks() + " | Feedback: " + request.getFeedbackNote()
                     : "Feedback: " + request.getFeedbackNote());
+        }
+
+        List<StoreOrder> stopOrders = storeOrderRepository.findByShipmentStop_StopId(stop.getStopId());
+        for (StoreOrder order : stopOrders) {
+            order.setStatus(OrderStatus.DELIVERED);
+        }
+        storeOrderRepository.saveAll(stopOrders);
+
+        confirmAndTransferStockForStop(shipment, stop, stopOrders);
+
+        if (isAllStopsDelivered(shipment)) {
+            shipment.setStatus(ShipmentStatus.DELIVERED);
+            shipment.setDeliveredAt(LocalDateTime.now());
+            shipment.setConfirmedBy(currentUser);
+            shipmentFeeAllocationService.allocateForDeliveredShipment(shipment);
         }
 
         shipmentRepository.save(shipment);
 
-        // Update all store orders to DELIVERED
-        List<StoreOrder> orders = storeOrderRepository.findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
-        for (StoreOrder order : orders) {
-            order.setStatus(OrderStatus.DELIVERED);
-        }
-        storeOrderRepository.saveAll(orders);
+        log.info("Shipment #{} stop #{} confirmed by user {}", shipmentId, stopId, currentUser.getUsername());
 
-        // --- LOGIC CỘNG KHO STORE & UPDATE INVOICE ---
-        confirmAndTransferStock(shipment);
-        // ----------------------------------------------
-
-        log.info("Shipment #{} DELIVERED and confirmed by user {}", shipmentId, currentUser.getUsername());
-
-        return mapToResponse(shipment, orders);
+        return mapToResponse(shipment);
     }
 
     @Override
@@ -281,15 +305,10 @@ public class ShipmentServiceImpl implements ShipmentService {
             throw new IllegalStateException("Cannot cancel a completed shipment. Current: " + shipment.getStatus());
         }
         // Hủy đơn trên AhaMove nếu đã tạo
-        ahamoveShipmentService.cancelAhamoveOrder(shipment, reason); 
-        // Release orders back to READY
-        List<StoreOrder> orders = storeOrderRepository.findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
-        for (StoreOrder order : orders) {
+        ahamoveShipmentService.cancelAhamoveOrder(shipment, reason);
 
-            order.setShipmentStop(null);
-            order.setStatus(OrderStatus.READY);
-        }
-        storeOrderRepository.saveAll(orders);
+        releaseUndeliveredOrders(shipment, ShipmentStopStatus.CANCELLED);
+        restoreKitchenStockForUndelivered(shipment, "Cancelled shipment: " + reason);
 
         shipment.setStatus(ShipmentStatus.CANCELLED);
         shipment.setCancelledAt(LocalDateTime.now());
@@ -375,6 +394,10 @@ public class ShipmentServiceImpl implements ShipmentService {
                 .map(stop -> ShipmentResponse.StopResponse.builder()
                     .stopId(stop.getStopId())
                     .stopOrder(stop.getStopOrder())
+                    .status(stop.getStatus() != null ? stop.getStatus().name() : null)
+                    .deliveredAt(stop.getDeliveredAt())
+                    .confirmedByUserId(stop.getConfirmedBy() != null ? stop.getConfirmedBy().getUserId() : null)
+                    .confirmedByUsername(stop.getConfirmedBy() != null ? stop.getConfirmedBy().getUsername() : null)
                     .storeId(stop.getStore() != null ? stop.getStore().getStoreId() : null)
                     .storeName(stop.getStore() != null ? stop.getStore().getName() : null)
                     .storePhone(stop.getStore() != null ? stop.getStore().getPhoneNumber() : null)
@@ -478,23 +501,23 @@ public class ShipmentServiceImpl implements ShipmentService {
         kitchenStockItemRepository.saveAll(stocks);
     }
 
-    private void confirmAndTransferStock(Shipment shipment) {
-        log.info("Transferring sourced stock to stores for shipment #{}", shipment.getShipmentId());
+    private void confirmAndTransferStockForStop(Shipment shipment, ShipmentStop stop, List<StoreOrder> stopOrders) {
+        if (stopOrders == null || stopOrders.isEmpty()) {
+            return;
+        }
 
-        List<StoreOrder> orders = storeOrderRepository.findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
-        List<ShipmentSourcingRecord> records = shipmentSourcingRecordRepository.findByShipment_ShipmentId(shipment.getShipmentId());
-
-        Map<Long, Map<Long, java.math.BigDecimal>> storeProductDemand = new HashMap<>();
-        for (StoreOrder order : orders) {
-            Long storeId = order.getStore().getStoreId();
-            Map<Long, java.math.BigDecimal> productDemand = storeProductDemand.computeIfAbsent(storeId, key -> new HashMap<>());
+        Map<Long, BigDecimal> demandByProduct = new HashMap<>();
+        for (StoreOrder order : stopOrders) {
             for (OrderDetail detail : order.getOrderDetails()) {
-                Long productId = detail.getProduct().getId();
-                java.math.BigDecimal quantity = java.math.BigDecimal.valueOf(detail.getQuantity());
-                productDemand.merge(productId, quantity, java.math.BigDecimal::add);
+                demandByProduct.merge(
+                        detail.getProduct().getId(),
+                        BigDecimal.valueOf(detail.getQuantity()),
+                        BigDecimal::add
+                );
             }
         }
 
+        List<ShipmentSourcingRecord> records = shipmentSourcingRecordRepository.findByShipment_ShipmentId(shipment.getShipmentId());
         Map<Long, List<ShipmentSourcingRecord>> recordsByProduct = records.stream()
                 .collect(Collectors.groupingBy(record -> record.getProduct().getId()));
         recordsByProduct.values().forEach(productRecords -> productRecords.sort(
@@ -502,72 +525,212 @@ public class ShipmentServiceImpl implements ShipmentService {
                         Comparator.nullsLast(Comparator.naturalOrder()))
         ));
 
-        Map<Long, java.math.BigDecimal> remainingByRecord = records.stream()
-                .collect(Collectors.toMap(ShipmentSourcingRecord::getId, ShipmentSourcingRecord::getQuantity));
+        List<InventoryTransaction> alreadyInTransactions = inventoryTransactionRepository
+                .findByRefIdAndType(shipment.getShipmentId(), InventoryTransactionType.SHIPMENT_IN);
+        Map<Long, BigDecimal> alreadyTransferredByProduct = new HashMap<>();
+        for (InventoryTransaction tx : alreadyInTransactions) {
+            if (tx.getProduct() == null) {
+                continue;
+            }
+            alreadyTransferredByProduct.merge(tx.getProduct().getId(), tx.getQuantity(), BigDecimal::add);
+        }
 
-        Map<Long, StoreWarehouse> warehouseByStoreId = new HashMap<>();
-        for (Map.Entry<Long, Map<Long, java.math.BigDecimal>> storeDemandEntry : storeProductDemand.entrySet()) {
-            Long storeId = storeDemandEntry.getKey();
-            StoreWarehouse storeWarehouse = warehouseByStoreId.computeIfAbsent(storeId,
-                    key -> storeWarehouseRepository.findByStore_StoreId(key)
-                            .orElseThrow(() -> new ResourceNotFoundException("Warehouse not found for store ID: " + key)));
+        Long storeId = stop.getStore() != null ? stop.getStore().getStoreId() : null;
+        if (storeId == null) {
+            throw new IllegalStateException("Stop has no store: " + stop.getStopId());
+        }
 
-            for (Map.Entry<Long, java.math.BigDecimal> productDemandEntry : storeDemandEntry.getValue().entrySet()) {
-                Long productId = productDemandEntry.getKey();
-                java.math.BigDecimal remainingDemand = productDemandEntry.getValue();
+        StoreWarehouse storeWarehouse = storeWarehouseRepository.findByStore_StoreId(storeId)
+                .orElseThrow(() -> new ResourceNotFoundException("Warehouse not found for store ID: " + storeId));
 
-                List<ShipmentSourcingRecord> productRecords = recordsByProduct.getOrDefault(productId, List.of());
-                for (ShipmentSourcingRecord record : productRecords) {
-                    if (remainingDemand.compareTo(java.math.BigDecimal.ZERO) <= 0) {
-                        break;
-                    }
+        for (Map.Entry<Long, BigDecimal> demandEntry : demandByProduct.entrySet()) {
+            Long productId = demandEntry.getKey();
+            BigDecimal remainingDemand = demandEntry.getValue();
 
-                    java.math.BigDecimal remainingRecordQty = remainingByRecord.getOrDefault(record.getId(), java.math.BigDecimal.ZERO);
-                    if (remainingRecordQty.compareTo(java.math.BigDecimal.ZERO) <= 0) {
-                        continue;
-                    }
+            BigDecimal alreadyTransferred = alreadyTransferredByProduct.getOrDefault(productId, BigDecimal.ZERO);
+            BigDecimal remainingPoolForProduct = recordsByProduct.getOrDefault(productId, List.of()).stream()
+                    .map(ShipmentSourcingRecord::getQuantity)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .subtract(alreadyTransferred);
 
-                    java.math.BigDecimal transferQty = remainingDemand.min(remainingRecordQty);
-                    remainingByRecord.put(record.getId(), remainingRecordQty.subtract(transferQty));
-                    remainingDemand = remainingDemand.subtract(transferQty);
+            if (remainingPoolForProduct.compareTo(remainingDemand) < 0) {
+                throw new IllegalStateException("Insufficient sourced stock for product ID " + productId
+                        + " at stop " + stop.getStopId() + ". Missing: " + remainingDemand.subtract(remainingPoolForProduct));
+            }
 
-                    StoreStockItem storeStock = StoreStockItem.builder()
-                            .warehouse(storeWarehouse)
-                            .product(record.getProduct())
-                            .quantity(transferQty)
-                            .expiryDate(record.getExpiryDate())
-                            .productionPlan(record.getProductionPlan())
-                            .build();
-                    storeStockItemRepository.save(storeStock);
-
-                    InventoryTransaction transaction = InventoryTransaction.builder()
-                            .product(record.getProduct())
-                            .quantity(transferQty)
-                            .type(InventoryTransactionType.SHIPMENT_IN)
-                            .refId(shipment.getShipmentId())
-                            .storeWarehouse(storeWarehouse)
-                            .expiryDate(record.getExpiryDate())
-                            .productionPlan(record.getProductionPlan())
-                            .createdAt(LocalDateTime.now())
-                            .build();
-                    inventoryTransactionRepository.save(transaction);
+            List<ShipmentSourcingRecord> productRecords = recordsByProduct.getOrDefault(productId, List.of());
+            BigDecimal transferredFromProduct = alreadyTransferred;
+            for (ShipmentSourcingRecord record : productRecords) {
+                if (remainingDemand.compareTo(BigDecimal.ZERO) <= 0) {
+                    break;
                 }
 
-                if (remainingDemand.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                    throw new IllegalStateException("Insufficient sourced stock for product ID " + productId
-                            + " at store ID " + storeId + ". Missing: " + remainingDemand);
+                BigDecimal recordQty = record.getQuantity();
+                if (transferredFromProduct.compareTo(recordQty) >= 0) {
+                    transferredFromProduct = transferredFromProduct.subtract(recordQty);
+                    continue;
                 }
+
+                BigDecimal availableInRecord = recordQty.subtract(transferredFromProduct);
+                transferredFromProduct = BigDecimal.ZERO;
+
+                BigDecimal transferQty = availableInRecord.min(remainingDemand);
+                remainingDemand = remainingDemand.subtract(transferQty);
+
+                StoreStockItem storeStock = StoreStockItem.builder()
+                        .warehouse(storeWarehouse)
+                        .product(record.getProduct())
+                        .quantity(transferQty)
+                        .expiryDate(record.getExpiryDate())
+                        .productionPlan(record.getProductionPlan())
+                        .build();
+                storeStockItemRepository.save(storeStock);
+
+                InventoryTransaction transaction = InventoryTransaction.builder()
+                        .product(record.getProduct())
+                        .quantity(transferQty)
+                        .type(InventoryTransactionType.SHIPMENT_IN)
+                        .refId(shipment.getShipmentId())
+                        .storeWarehouse(storeWarehouse)
+                        .expiryDate(record.getExpiryDate())
+                        .productionPlan(record.getProductionPlan())
+                        .note("Transfer for stop #" + stop.getStopId())
+                        .createdAt(LocalDateTime.now())
+                        .build();
+                inventoryTransactionRepository.save(transaction);
             }
         }
 
-        // --- UPDATE INVOICE STATUS ---
-        for (StoreOrder order : orders) {
+        for (StoreOrder order : stopOrders) {
             if (order.getInvoice() != null) {
                 Invoice invoice = order.getInvoice();
                 invoice.setStatus(InvoiceStatus.FULFILLED);
                 invoiceRepository.save(invoice);
             }
         }
+    }
+
+    private void releaseUndeliveredOrders(Shipment shipment, ShipmentStopStatus stopStatus) {
+        List<ShipmentStop> stops = shipment.getStops() == null ? List.of() : shipment.getStops();
+        for (ShipmentStop stop : stops) {
+            if (stop.getStatus() == ShipmentStopStatus.DELIVERED) {
+                continue;
+            }
+            List<StoreOrder> stopOrders = storeOrderRepository.findByShipmentStop_StopId(stop.getStopId());
+            for (StoreOrder order : stopOrders) {
+                order.setShipmentStop(null);
+                order.setStatus(OrderStatus.READY);
+            }
+            storeOrderRepository.saveAll(stopOrders);
+            stop.setStatus(stopStatus);
+        }
+    }
+
+    private void restoreKitchenStockForUndelivered(Shipment shipment, String note) {
+        if (shipment.getStops() == null || shipment.getStops().isEmpty()) {
+            return;
+        }
+
+        Set<Long> deliveredStopIds = shipment.getStops().stream()
+                .filter(stop -> stop.getStatus() == ShipmentStopStatus.DELIVERED)
+                .map(ShipmentStop::getStopId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        List<StoreOrder> deliveredOrders = new ArrayList<>();
+        for (Long stopId : deliveredStopIds) {
+            deliveredOrders.addAll(storeOrderRepository.findByShipmentStop_StopId(stopId));
+        }
+
+        Map<Long, BigDecimal> deliveredDemandByProduct = new HashMap<>();
+        for (StoreOrder order : deliveredOrders) {
+            for (OrderDetail detail : order.getOrderDetails()) {
+                deliveredDemandByProduct.merge(
+                        detail.getProduct().getId(),
+                        BigDecimal.valueOf(detail.getQuantity()),
+                        BigDecimal::add
+                );
+            }
+        }
+
+        List<ShipmentSourcingRecord> records = shipmentSourcingRecordRepository.findByShipment_ShipmentId(shipment.getShipmentId());
+        Map<Long, BigDecimal> sourcedByProduct = records.stream()
+                .collect(Collectors.groupingBy(
+                        record -> record.getProduct().getId(),
+                        Collectors.mapping(ShipmentSourcingRecord::getQuantity,
+                                Collectors.reducing(BigDecimal.ZERO, BigDecimal::add))
+                ));
+
+        KitchenWarehouse kitchenWarehouse = kitchenWarehouseRepository.findById(1L)
+                .orElseThrow(() -> new ResourceNotFoundException("Central Kitchen Warehouse not found"));
+
+        for (Map.Entry<Long, BigDecimal> sourced : sourcedByProduct.entrySet()) {
+            Long productId = sourced.getKey();
+            BigDecimal undeliveredQty = sourced.getValue().subtract(
+                    deliveredDemandByProduct.getOrDefault(productId, BigDecimal.ZERO)
+            );
+
+            if (undeliveredQty.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            List<KitchenStockItem> productStocks = kitchenStockItemRepository
+                    .findByWarehouse_WarehouseIdAndProduct_Id(kitchenWarehouse.getWarehouseId(), productId);
+
+            KitchenStockItem targetStock = productStocks.stream()
+                    .findFirst()
+                    .orElseGet(() -> {
+                        ShipmentSourcingRecord referenceRecord = records.stream()
+                                .filter(r -> r.getProduct().getId().equals(productId))
+                                .findFirst()
+                                .orElseThrow(() -> new IllegalStateException("Missing sourcing record for product " + productId));
+                        KitchenStockItem newStock = KitchenStockItem.builder()
+                                .warehouse(kitchenWarehouse)
+                                .product(referenceRecord.getProduct())
+                                .quantity(BigDecimal.ZERO)
+                                .expiryDate(referenceRecord.getExpiryDate())
+                                .productionPlan(referenceRecord.getProductionPlan())
+                                .build();
+                        return kitchenStockItemRepository.save(newStock);
+                    });
+
+            targetStock.setQuantity(targetStock.getQuantity().add(undeliveredQty));
+            kitchenStockItemRepository.save(targetStock);
+
+            ShipmentSourcingRecord referenceRecord = records.stream()
+                    .filter(r -> r.getProduct().getId().equals(productId))
+                    .findFirst()
+                    .orElse(null);
+
+            InventoryTransaction transaction = InventoryTransaction.builder()
+                    .product(targetStock.getProduct())
+                    .quantity(undeliveredQty)
+                    .type(InventoryTransactionType.KITCHEN_ADJUST)
+                    .refId(shipment.getShipmentId())
+                    .kitchenWarehouse(kitchenWarehouse)
+                    .expiryDate(targetStock.getExpiryDate())
+                    .productionPlan(referenceRecord != null ? referenceRecord.getProductionPlan() : null)
+                    .note(note)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            inventoryTransactionRepository.save(transaction);
+        }
+    }
+
+    private ShipmentStop getStopOrThrow(Shipment shipment, Long stopId) {
+        if (shipment.getStops() == null) {
+            throw new ResourceNotFoundException("Stop not found in shipment: " + stopId);
+        }
+        return shipment.getStops().stream()
+                .filter(stop -> Objects.equals(stop.getStopId(), stopId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Stop not found in shipment: " + stopId));
+    }
+
+    private boolean isAllStopsDelivered(Shipment shipment) {
+        return shipment.getStops() != null
+                && !shipment.getStops().isEmpty()
+                && shipment.getStops().stream().allMatch(stop -> stop.getStatus() == ShipmentStopStatus.DELIVERED);
     }
 
     private boolean hasStoreAccess(Shipment shipment, Long storeId) {
@@ -578,5 +741,12 @@ public class ShipmentServiceImpl implements ShipmentService {
                 .map(ShipmentStop::getStore)
                 .filter(java.util.Objects::nonNull)
                 .anyMatch(store -> storeId.equals(store.getStoreId()));
+    }
+
+    private boolean hasStoreAccessToStop(ShipmentStop stop, Long storeId) {
+        return stop != null
+                && stop.getStore() != null
+                && storeId != null
+                && Objects.equals(stop.getStore().getStoreId(), storeId);
     }
 }

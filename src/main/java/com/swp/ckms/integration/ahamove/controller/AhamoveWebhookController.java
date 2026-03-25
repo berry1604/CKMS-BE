@@ -20,7 +20,7 @@ public class AhamoveWebhookController {
     private final AhamoveShipmentService ahamoveShipmentService;
     private final ObjectMapper objectMapper;
 
-    @PostMapping
+    @PostMapping({"", "/"})
     public ResponseEntity<Map<String, String>> handleWebhook(
             @RequestBody AhamoveWebhookRequest request) {
 

@@ -63,6 +63,9 @@ public class AhamoveOrderRequest {
 
         // Ghi chú tại điểm này
         private String remarks;
+
+        @JsonProperty("tracking_number")
+        private String trackingNumber;
     }
 
     @Data

@@ -16,6 +16,7 @@ import com.swp.ckms.repository.*;
 import com.swp.ckms.security.SecurityUtils;
 import com.swp.ckms.security.UserContext;
 import com.swp.ckms.service.AllocationService;
+import com.swp.ckms.util.StoreOrderAmountUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -166,7 +167,7 @@ public class AllocationServiceImpl implements AllocationService {
             StoreOrder order = storeOrderRepository.findById(entry.getKey())
                     .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + entry.getKey()));
             
-            BigDecimal newTotalAmount = BigDecimal.ZERO;
+            BigDecimal newOrderFee = BigDecimal.ZERO;
             
             for (OrderItemAdjustment adj : entry.getValue()) {
                 OrderDetail detail = order.getOrderDetails().stream()
@@ -183,18 +184,19 @@ public class AllocationServiceImpl implements AllocationService {
                         .build());
 
                 if (detail.getUnitPrice() != null) {
-                    newTotalAmount = newTotalAmount.add(detail.getUnitPrice().multiply(adj.getFinalQty()));
+                    newOrderFee = newOrderFee.add(detail.getUnitPrice().multiply(adj.getFinalQty()));
                 }
             }
 
-            order.setTotalAmount(newTotalAmount);
+            order.setOrderFee(newOrderFee);
+            StoreOrderAmountUtils.syncTotalAmount(order);
             if (order.getInvoice() != null) {
                 Invoice invoice = order.getInvoice();
-                invoice.setAmount(newTotalAmount);
+                invoice.setAmount(order.getTotalAmount());
                 invoiceRepository.save(invoice);
             }
 
-            order.setStatus(OrderStatus.ALLOCATED);
+            order.setStatus(OrderStatus.READY);
             storeOrderRepository.save(order);
         }
     }
@@ -215,7 +217,7 @@ public class AllocationServiceImpl implements AllocationService {
                 .collect(Collectors.toMap(out -> out.getProduct().getId(), out -> out.getActualProducedQty()));
 
         for (StoreOrder order : orders) {
-            BigDecimal newTotalAmount = BigDecimal.ZERO;
+            BigDecimal newOrderFee = BigDecimal.ZERO;
             for (OrderDetail detail : order.getOrderDetails()) {
                 Long productId = detail.getProduct().getId();
                 BigDecimal requestedQty = BigDecimal.valueOf(detail.getQuantity());
@@ -239,18 +241,19 @@ public class AllocationServiceImpl implements AllocationService {
                         .build());
 
                 if (detail.getUnitPrice() != null) {
-                    newTotalAmount = newTotalAmount.add(detail.getUnitPrice().multiply(finalQty));
+                    newOrderFee = newOrderFee.add(detail.getUnitPrice().multiply(finalQty));
                 }
             }
 
-            order.setTotalAmount(newTotalAmount);
+            order.setOrderFee(newOrderFee);
+            StoreOrderAmountUtils.syncTotalAmount(order);
             if (order.getInvoice() != null) {
                 Invoice invoice = order.getInvoice();
-                invoice.setAmount(newTotalAmount);
+                invoice.setAmount(order.getTotalAmount());
                 invoiceRepository.save(invoice);
             }
 
-            order.setStatus(OrderStatus.ALLOCATED);
+            order.setStatus(OrderStatus.READY);
             storeOrderRepository.save(order);
         }
     }

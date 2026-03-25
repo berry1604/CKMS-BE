@@ -12,7 +12,7 @@ import com.swp.ckms.enums.BillingStatementStatus;
 import com.swp.ckms.service.BillingStatementService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -36,7 +36,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/v1/billing-statements")
 @RequiredArgsConstructor
-
+@Slf4j
 public class BillingStatementController {
 
     private final BillingStatementService billingStatementService;
@@ -150,10 +150,12 @@ public class BillingStatementController {
             HttpServletResponse response
     ) throws IOException {
 
+        System.out.println(">>> DEBUG: BillingStatementController: handleVnPayReturn received with " + params.size() + " params");
         try {
             billingStatementService.handleVnPayReturn(params);
         } catch (Exception e) {
-            System.out.println("VNPay return error: " + e.getMessage());
+            System.out.println(">>> DEBUG ERROR: VNPay return logic error: " + e.getMessage());
+            e.printStackTrace();
         }
 
         // encode params

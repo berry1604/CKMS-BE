@@ -68,13 +68,14 @@ public class ShipmentController {
     }
 
     // Store staff xác nhận nhận hàng
-    @PatchMapping("/{id}/confirm")
+        @PatchMapping("/{id}/stops/{stopId}/confirm")
     @PreAuthorize("hasAuthority('CONFIRM_SHIPMENT')")
     public ResponseEntity<ApiResponse<ShipmentResponse>> confirmDelivery(
             @PathVariable Long id,
+                        @PathVariable Long stopId,
             @RequestBody(required = false) ConfirmDeliveryRequest request) {
 
-        ShipmentResponse response = shipmentService.confirmDelivery(id, request);
+                ShipmentResponse response = shipmentService.confirmDelivery(id, stopId, request);
         return ResponseEntity.ok(ApiResponse.<ShipmentResponse>builder()
                 .status(HttpStatus.OK.value())
                 .message("Delivery confirmed successfully")
