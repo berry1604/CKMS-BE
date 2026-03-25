@@ -196,7 +196,7 @@ public class AllocationServiceImpl implements AllocationService {
                 invoiceRepository.save(invoice);
             }
 
-            order.setStatus(OrderStatus.ALLOCATED);
+            order.setStatus(OrderStatus.READY);
             storeOrderRepository.save(order);
         }
     }
@@ -253,7 +253,7 @@ public class AllocationServiceImpl implements AllocationService {
                 invoiceRepository.save(invoice);
             }
 
-            order.setStatus(OrderStatus.ALLOCATED);
+            order.setStatus(OrderStatus.READY);
             storeOrderRepository.save(order);
         }
     }

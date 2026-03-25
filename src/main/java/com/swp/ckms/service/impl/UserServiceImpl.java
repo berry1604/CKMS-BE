@@ -95,7 +95,7 @@ public class UserServiceImpl implements UserService {
                 .password(null) // explicit null, though default is null
                 .verificationTokenHash(tokenHash)
                 .verificationTokenExpiresAt(LocalDateTime.now().plusHours(24))
-                .isActive(true)
+                // .isActive(true)
                 .role(role)
                 .store(store)
                 .kitchen(kitchen)
