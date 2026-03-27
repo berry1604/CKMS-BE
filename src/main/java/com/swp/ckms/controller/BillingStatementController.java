@@ -36,7 +36,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/v1/billing-statements")
 @RequiredArgsConstructor
-@Slf4j
+ @Slf4j
 public class BillingStatementController {
 
     private final BillingStatementService billingStatementService;
