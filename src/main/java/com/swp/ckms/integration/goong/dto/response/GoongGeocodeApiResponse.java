@@ -22,6 +22,9 @@ public class GoongGeocodeApiResponse {
 	@AllArgsConstructor
 	@JsonIgnoreProperties(ignoreUnknown = true)
 	public static class GoongGeocodeResultItem {
+		@JsonProperty("address_components")
+		private List<AddressComponent> addressComponents;
+
 		@JsonProperty("formatted_address")
 		private String formattedAddress;
 
@@ -30,8 +33,38 @@ public class GoongGeocodeApiResponse {
 
 		private Geometry geometry;
 
+		private List<String> types;
+
 		@JsonProperty("deprecated_description")
 		private String deprecatedDescription;
+
+		@JsonProperty("compound_id")
+		private CompoundId compoundId;
+
+		@JsonProperty("deprecated_compound_id")
+		private CompoundId deprecatedCompoundId;
+	}
+
+	@Data
+	@NoArgsConstructor
+	@AllArgsConstructor
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public static class AddressComponent {
+		@JsonProperty("long_name")
+		private String longName;
+
+		@JsonProperty("short_name")
+		private String shortName;
+	}
+
+	@Data
+	@NoArgsConstructor
+	@AllArgsConstructor
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	public static class CompoundId {
+		private Integer province;
+		private Integer district;
+		private Integer commune;
 	}
 
 	@Data
