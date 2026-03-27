@@ -304,42 +304,23 @@ public class StoreOrderServiceImpl implements StoreOrderService {
             User approvedBy = userRepository.findById(ctx.getUserId())
                     .orElseThrow(() -> new ResourceNotFoundException("Approver not found"));
 
-            // [Phase 2] Kitchen Capacity Guard (Refined: Global if no specific kitchen)
-            CentralKitchen kitchen = approvedBy.getKitchen();
-            if (kitchen != null) {
-                // Kitchen-specific check for local coordinators
-                if (kitchen.getMaxDailyCapacity() != null) {
-                    java.math.BigDecimal existingLoad = storeOrderRepository.sumQuantityByKitchenAndDeliveryDate(
-                            kitchen.getKitchenId(), order.getDeliveryDate());
-                    if (existingLoad == null) existingLoad = java.math.BigDecimal.ZERO;
+            // Single Kitchen Refactor: Always check capacity against Kitchen ID 1
+            CentralKitchen kitchen = centralKitchenRepository.findById(1L)
+                    .orElseThrow(() -> new ResourceNotFoundException("Default Kitchen not found with ID: 1"));
 
-                    java.math.BigDecimal newOrderLoad = java.math.BigDecimal.valueOf(
-                            order.getOrderDetails().stream().mapToDouble(d -> d.getQuantity()).sum());
-
-                    if (existingLoad.add(newOrderLoad).compareTo(kitchen.getMaxDailyCapacity()) > 0) {
-                        throw new com.swp.ckms.exception.business.BusinessRuleViolationException(String.format(
-                                "Duyệt đơn thất bại: Tổng tải sản xuất ngày %s vượt quá công suất bếp %s (Hệ thống đã nhận: %s, Đơn này: %s)",
-                                order.getDeliveryDate(), kitchen.getMaxDailyCapacity(), existingLoad, newOrderLoad));
-                    }
-                }
-            } else {
-                // Global check for HQ users (no assigned kitchen)
-                java.math.BigDecimal totalCapacity = centralKitchenRepository.sumTotalMaxDailyCapacity();
-                if (totalCapacity == null) totalCapacity = java.math.BigDecimal.ZERO;
-
-                java.math.BigDecimal globalLoad = storeOrderRepository.sumTotalQuantityByDeliveryDate(order.getDeliveryDate());
-                if (globalLoad == null) globalLoad = java.math.BigDecimal.ZERO;
+            if (kitchen.getMaxDailyCapacity() != null) {
+                java.math.BigDecimal existingLoad = storeOrderRepository.sumQuantityByKitchenAndDeliveryDate(
+                        1L, order.getDeliveryDate());
+                if (existingLoad == null) existingLoad = java.math.BigDecimal.ZERO;
 
                 java.math.BigDecimal newOrderLoad = java.math.BigDecimal.valueOf(
                         order.getOrderDetails().stream().mapToDouble(d -> d.getQuantity()).sum());
 
-                if (globalLoad.add(newOrderLoad).compareTo(totalCapacity) > 0) {
+                if (existingLoad.add(newOrderLoad).compareTo(kitchen.getMaxDailyCapacity()) > 0) {
                     throw new com.swp.ckms.exception.business.BusinessRuleViolationException(String.format(
-                            "Duyệt đơn thất bại: Tổng tải toàn hệ thống ngày %s (%s) đã chạm giới hạn công suất tổng (%s).",
-                            order.getDeliveryDate(), globalLoad.add(newOrderLoad), totalCapacity));
+                            "Duyệt đơn thất bại: Tổng tải sản xuất ngày %s vượt quá công suất bếp %s (Hệ thống đã nhận: %s, Đơn này: %s)",
+                            order.getDeliveryDate(), kitchen.getMaxDailyCapacity(), existingLoad, newOrderLoad));
                 }
-                log.info("HQ Approval: Global capacity check passed. Total: {}, Used: {}, New: {}", 
-                        totalCapacity, globalLoad, newOrderLoad);
             }
 
             order.setStatus(OrderStatus.APPROVED); // Duyệt đơn là đưa vào hàng chờ Scheduled
@@ -496,27 +477,24 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         StoreOrder savedOrder = storeOrderRepository.save(order);
 
         // --- TRIGGER NOTIFICATION ---
+        // Single Kitchen Refactor: Only notify the coordinator of the global kitchen (ID 1)
         try {
-            // Since stores are independent, we notify all coordinators of all active kitchens
-            List<CentralKitchen> allKitchens = centralKitchenRepository.findAll();
-            for (CentralKitchen k : allKitchens) {
-                String recipient = recipientResolver.resolveCoordinatorEmail(k.getKitchenId());
-                if (recipient != null) {
-                    java.util.Map<String, Object> payload = java.util.Map.of(
-                            "orderId", savedOrder.getOrderId(),
-                            "storeName", savedOrder.getStore().getName(),
-                            "orderDate", savedOrder.getOrderDate().toString()
-                    );
-                    
-                    notificationService.createEmailNotification(
-                            com.swp.ckms.enums.NotificationType.ORDER_SUBMITTED,
-                            recipient,
-                            "order-submitted.html",
-                            payload,
-                            "ORDER_SUBMITTED_" + savedOrder.getOrderId()
-                    );
-                    log.info("Notification sent to coordinator {} for order #{}", recipient, savedOrder.getOrderId());
-                }
+            String recipient = recipientResolver.resolveCoordinatorEmail(1L);
+            if (recipient != null) {
+                java.util.Map<String, Object> payload = java.util.Map.of(
+                        "orderId", savedOrder.getOrderId(),
+                        "storeName", savedOrder.getStore().getName(),
+                        "orderDate", savedOrder.getOrderDate().toString()
+                );
+                
+                notificationService.createEmailNotification(
+                        com.swp.ckms.enums.NotificationType.ORDER_SUBMITTED,
+                        recipient,
+                        "order-submitted.html",
+                        payload,
+                        "ORDER_SUBMITTED_" + savedOrder.getOrderId()
+                );
+                log.info("Notification sent to coordinator {} for order #{}", recipient, savedOrder.getOrderId());
             }
         } catch (Exception e) {
             log.error("Failed to trigger order submission notification", e);
@@ -554,11 +532,12 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         if (order.getStatus() == OrderStatus.APPROVED) {
             User approvedBy = userRepository.findById(ctx.getUserId())
                     .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-            CentralKitchen kitchen = approvedBy.getKitchen();
+            // Single Kitchen Refactor: Always check against Kitchen ID 1
+            CentralKitchen kitchen = centralKitchenRepository.findById(1L).orElse(null);
             
             if (kitchen != null && kitchen.getMaxDailyCapacity() != null) {
                 java.math.BigDecimal existingLoad = storeOrderRepository.sumQuantityByKitchenAndDeliveryDate(
-                        kitchen.getKitchenId(), newDeliveryDate);
+                        1L, newDeliveryDate);
                 if (existingLoad == null) existingLoad = java.math.BigDecimal.ZERO;
 
                 java.math.BigDecimal orderLoad = java.math.BigDecimal.valueOf(
