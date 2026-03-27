@@ -100,7 +100,7 @@ public class DataSeeder implements CommandLineRunner {
                 .filter(p -> managerCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role managerRole = seedRole("MANAGER", managerPrivileges);
-        seedUser("manager", "manager@ckms.com", "manager", "Operation Manager", managerRole, null, defaultKitchen);
+        seedUser("manager", "manager@ckms.com", "manager", "Operation Manager", managerRole, null, null);
 
         // 3. COORDINATOR - Planning: Duyệt đơn, Lập kế hoạch, Giao hàng
         Set<String> coordinatorCodes = new HashSet<>(Arrays.asList(
@@ -119,7 +119,7 @@ public class DataSeeder implements CommandLineRunner {
         // 4. KITCHEN_STAFF - Execution: Sản xuất & Kho bếp
         Set<String> kitchenCodes = new HashSet<>(Arrays.asList(
                 "VIEW_PRODUCTION_PLAN", "EXECUTE_PRODUCTION", "UPDATE_PRODUCTION_PLAN",
-                "VIEW_KITCHEN_INVENTORY", "UPDATE_KITCHEN_INVENTORY", "ADJUST_KITCHEN_STOCK",
+                "VIEW_KITCHEN_INVENTORY", "UPDATE_KITCHEN_INVENTORY", "ADJUST_KITCHEN_STOCK","VIEW_PRODUCTION_PLAN",
                 "START_SHIPMENT", "VIEW_SHIPMENT", "VIEW_PRODUCT", "VIEW_MATERIAL", 
                 "PREPARE_SHIPMENT", "VIEW_KITCHEN"
         ));

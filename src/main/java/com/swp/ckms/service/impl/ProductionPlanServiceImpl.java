@@ -86,8 +86,10 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         } else {
             // Priority 2: Fallback to user's assigned kitchen
             kitchen = currentUser.getKitchen();
-            if (kitchen == null || kitchen.getKitchenId() == null) {
-                throw new AccessDeniedException("User does not belong to any Central Kitchen. Please provide kitchenId in request.");
+            if (kitchen == null) {
+                // Single Kitchen Refactor: Default to Kitchen ID 1 for system-level users (Coordinator/Manager)
+                kitchen = kitchenRepository.findById(1L)
+                        .orElseThrow(() -> new ResourceNotFoundException("Default Kitchen not found with ID 1"));
             }
         }
 
@@ -530,22 +532,16 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                     .actualProducedQty(outputReq.getActualQty())
                     .build());
 
-            // Feedback Loop: Add produced items to Kitchen Stock
-            KitchenStockItem stockItem = kitchenStockItemRepository
-                    .findByWarehouse_WarehouseIdAndProduct_Id(warehouse.getWarehouseId(), product.getId())
-                    .stream().findFirst()
-                    .orElseGet(() -> KitchenStockItem.builder()
-                            .warehouse(warehouse)
-                            .product(product)
-                            .quantity(BigDecimal.ZERO)
-                            .reservedQuantity(BigDecimal.ZERO)
-                            .build());
-
-            stockItem.setQuantity(stockItem.getQuantity().add(outputReq.getActualQty()));
-            stockItem.setProductionPlan(plan);
-            if (plan.getPlannedDate() != null) {
-                stockItem.setExpiryDate(plan.getPlannedDate().plusDays(3));
-            }
+            // Feedback Loop: Add produced items to Kitchen Stock as a NEW batch record (Lot-based tracking)
+            KitchenStockItem stockItem = KitchenStockItem.builder()
+                    .warehouse(warehouse)
+                    .product(product)
+                    .quantity(outputReq.getActualQty())
+                    .reservedQuantity(BigDecimal.ZERO)
+                    .productionPlan(plan)
+                    .expiryDate(plan.getPlannedDate() != null ? plan.getPlannedDate().plusDays(3) : null)
+                    .build();
+            
             kitchenStockItemRepository.save(stockItem);
 
             // Audit
