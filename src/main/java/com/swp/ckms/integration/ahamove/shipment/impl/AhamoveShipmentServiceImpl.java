@@ -432,8 +432,8 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
         
         path.add(AhamovePoint.builder()
                 .address(store.getAddress())
-                .lat(store.getLatitude() != null ? Double.parseDouble(store.getLatitude()) : 0.0)
-                .lng(store.getLongitude() != null ? Double.parseDouble(store.getLongitude()) : 0.0)
+            .lat(store.getLatitude() != null ? store.getLatitude() : 0.0)
+            .lng(store.getLongitude() != null ? store.getLongitude() : 0.0)
                 .name(store.getName())
                 .mobile(store.getPhoneNumber() != null ? store.getPhoneNumber() : "")
                 .remarks(stop.getRemarks() != null ? stop.getRemarks() : "Giao hàng cho " + store.getName())

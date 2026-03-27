@@ -6,6 +6,8 @@ import com.swp.ckms.dto.response.StoreResponse;
 import com.swp.ckms.entity.FranchiseStore;
 import com.swp.ckms.entity.StoreWarehouse;
 import com.swp.ckms.exception.business.DuplicateNameException;
+import com.swp.ckms.integration.goong.dto.response.GoongGeocodeResult;
+import com.swp.ckms.integration.goong.service.GoongService;
 import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.StoreWarehouseRepository;
 import com.swp.ckms.repository.specification.StoreSpecification;
@@ -30,6 +32,7 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
 
     private final FranchiseStoreRepository storeRepository;
     private final StoreWarehouseRepository warehouseRepository;
+        private final GoongService goongService;
 
         @PersistenceContext
         private EntityManager entityManager;
@@ -41,13 +44,21 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
             throw new DuplicateNameException("Tên cửa hàng đã tồn tại: " + request.getName());
         }
 
+                Double latitude = request.getLatitude();
+                Double longitude = request.getLongitude();
+                if (latitude == null || longitude == null) {
+                        GoongGeocodeResult geocodeResult = goongService.geocodeFirstAddress(request.getAddress());
+                        latitude = geocodeResult.getLatitude();
+                        longitude = geocodeResult.getLongitude();
+                }
+
         // 1. Create FranchiseStore
         FranchiseStore store = FranchiseStore.builder()
                 .name(request.getName())
                 .address(request.getAddress())
                 .phoneNumber(request.getPhoneNumber())
-                .latitude(request.getLatitude())
-                .longitude(request.getLongitude())
+                                .latitude(latitude)
+                                .longitude(longitude)
                 .paymentCycle(request.getPaymentCycle() != null ? request.getPaymentCycle() : "MONTHLY")
                 .build();
 
@@ -157,6 +168,7 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
                 .orElseThrow(() -> new RuntimeException("Store not found"));
 
 
+                String oldAddress = store.getAddress();
         if (!store.getName().equals(request.getName())
                 && storeRepository.existsByName(request.getName())) {
             throw new DuplicateNameException("Tên cửa hàng đã tồn tại: " + request.getName());
@@ -173,6 +185,14 @@ public class FranchiseStoreServiceImpl implements FranchiseStoreService {
                         ? request.getPaymentCycle()
                         : store.getPaymentCycle()
         );
+
+                boolean addressChanged = request.getAddress() != null && !request.getAddress().equals(oldAddress);
+                boolean hasManualCoordinates = request.getLatitude() != null && request.getLongitude() != null;
+                if (addressChanged && !hasManualCoordinates) {
+                        GoongGeocodeResult geocodeResult = goongService.geocodeFirstAddress(request.getAddress());
+                        store.setLatitude(geocodeResult.getLatitude());
+                        store.setLongitude(geocodeResult.getLongitude());
+                }
 
         FranchiseStore updatedStore = storeRepository.save(store);
 

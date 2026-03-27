@@ -23,8 +23,8 @@ public class FranchiseStore {
 
     private String address;
 
-    private String latitude;
-    private String longitude;
+    private Double latitude;
+    private Double longitude;
 
     private String paymentCycle;// e.g., "MONTHLY"
     
