@@ -91,6 +91,15 @@ public class JwtTokenProvider {
     public String generateAccessToken(com.swp.ckms.entity.User user) {
         Long storeId = user.getStore() != null ? user.getStore().getStoreId() : null;
         Long coordinatorId = user.getKitchen() != null ? user.getKitchen().getKitchenId() : null;
+        
+        // Single Kitchen Refactor: Default to ID 1 for relevant roles
+        if (coordinatorId == null && user.getRole() != null) {
+            String role = user.getRole().getRoleName().toUpperCase();
+            if (role.equals("COORDINATOR") || role.equals("KITCHEN_STAFF") || role.equals("MANAGER")) {
+                coordinatorId = 1L;
+            }
+        }
+
         String scope = user.getRole() != null ? user.getRole().getRoleName() : "USER";
         return generateToken(user.getUsername(), user.getUserId(), scope, storeId, coordinatorId, scope);
     }
