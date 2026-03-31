@@ -1,6 +1,8 @@
 package com.swp.ckms.service;
 
+import com.swp.ckms.dto.request.ApprovalMaterialPreviewRequest;
 import com.swp.ckms.dto.request.StoreOrderRequest;
+import com.swp.ckms.dto.response.ApprovalMaterialPreviewResponse;
 import com.swp.ckms.dto.response.StoreOrderResponse;
 
 import com.swp.ckms.enums.OrderStatus;
@@ -18,4 +20,5 @@ public interface StoreOrderService {
     StoreOrderResponse submitOrder(Long id, String username);
     StoreOrderResponse rescheduleOrder(Long id, java.time.LocalDate newDeliveryDate);
     java.util.List<StoreOrderResponse> splitOrder(Long id, java.util.List<com.swp.ckms.dto.request.OrderItemRequest> itemsToSplit);
+    ApprovalMaterialPreviewResponse previewApprovalMaterialUsage(ApprovalMaterialPreviewRequest request);
 }
