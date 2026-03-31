@@ -154,18 +154,18 @@ public class KitchenServiceImpl implements KitchenService {
                 kitchenId, com.swp.ckms.enums.ProductionPlanStatus.IN_PRODUCTION);
         String currentStatus = isProducing ? "IN_PRODUCTION" : "IDLE";
 
-        // 2. activePlanCount: count plans that are active (any date, matching statuses)
-        java.util.List<com.swp.ckms.enums.ProductionPlanStatus> activeStatuses = java.util.List.of(
+        // 3. todayUsedCapacity: sum of planned quantities for ALL non-cancelled plans TODAY
+        java.util.List<com.swp.ckms.enums.ProductionPlanStatus> cumulativeStatuses = java.util.List.of(
                 com.swp.ckms.enums.ProductionPlanStatus.PLANNED,
                 com.swp.ckms.enums.ProductionPlanStatus.READY_TO_PRODUCE,
-                com.swp.ckms.enums.ProductionPlanStatus.IN_PRODUCTION);
+                com.swp.ckms.enums.ProductionPlanStatus.IN_PRODUCTION,
+                com.swp.ckms.enums.ProductionPlanStatus.PRODUCED,
+                com.swp.ckms.enums.ProductionPlanStatus.FINISHED);
 
-        long activePlanCount = productionPlanRepository.countByKitchen_KitchenIdAndStatusIn(
-                kitchenId, activeStatuses);
+        long activePlanCount = productionPlanRepository.countByKitchen_KitchenIdAndStatusIn(kitchenId, cumulativeStatuses);
 
-        // 3. todayUsedCapacity: sum of planned quantities for active plans
         java.math.BigDecimal todayUsedCapacity = productionPlanRepository
-                .sumPlannedQuantityByKitchenAndStatuses(kitchenId, activeStatuses);
+                .sumPlannedQuantityByKitchenAndDate(kitchenId, java.time.LocalDate.now());
         if (todayUsedCapacity == null) todayUsedCapacity = java.math.BigDecimal.ZERO;
 
         return KitchenResponse.builder()

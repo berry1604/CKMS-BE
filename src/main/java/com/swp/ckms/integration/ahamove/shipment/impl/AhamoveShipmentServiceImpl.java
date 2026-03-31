@@ -36,6 +36,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
     private final AhamoveProperties ahamoveProperties;
     private final com.swp.ckms.service.NotificationService notificationService;
     private final com.swp.ckms.util.RecipientResolver recipientResolver;
+    private final com.swp.ckms.service.impl.ShipmentFeeAllocationService shipmentFeeAllocationService;
 
     @Override
     @Transactional
@@ -148,8 +149,13 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
         }
 
         ShipmentStatus newStatus = mapAhamoveStatus(request.getStatus());
-        log.info("Nhận Webhook từ Ahamove: orderId={} | status={} | mappedStatus={}", 
-                request.getOrderId(), request.getStatus(), newStatus);
+        // Handle "Partial Return" case from Ahamove sub_status
+        if ("RETURNED".equalsIgnoreCase(request.getSubStatus())) {
+            newStatus = ShipmentStatus.RETURNED;
+        }
+
+        log.info("Nhận Webhook từ Ahamove: orderId={} | status={} | subStatus={} | mappedStatus={}", 
+                request.getOrderId(), request.getStatus(), request.getSubStatus(), newStatus);
 
         if ("ACCEPTED".equalsIgnoreCase(request.getStatus()) || "IN PROCESS".equalsIgnoreCase(request.getStatus())) {
             log.info("Tiến hành gửi thông báo lộ trình cho Shipment #{} (Status: {})", shipment.getShipmentId(), request.getStatus());
@@ -226,20 +232,35 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
             reconcileStopsFromWebhookPath(shipment, request);
         }
 
-        if (isAllStopsArrivedOrDelivered(shipment)) {
-            if (shipment.getStatus() != ShipmentStatus.DELIVERED) {
-                shipment.setStatus(ShipmentStatus.ARRIVED);
+        boolean isTripFinalizedByStatus = (newStatus == ShipmentStatus.CANCELLED || newStatus == ShipmentStatus.RETURNED);
+        
+        if (isAllStopsFinalized(shipment) || isTripFinalizedByStatus) {
+            ShipmentStatus finalStatus = determineFinalShipmentStatus(shipment);
+            // If Ahamove says trip is cancelled/returned, respect that if no stops are arrived
+            if (isTripFinalizedByStatus && finalStatus != ShipmentStatus.ARRIVED && finalStatus != ShipmentStatus.DELIVERED) {
+                finalStatus = newStatus;
             }
-            if (shipment.getDeliveredAt() == null) {
+            shipment.setStatus(finalStatus);
+            
+            if (finalStatus == ShipmentStatus.ARRIVED && shipment.getDeliveredAt() == null) {
                 shipment.setDeliveredAt(LocalDateTime.now());
             }
-        } else if (newStatus == ShipmentStatus.CANCELLED || newStatus == ShipmentStatus.RETURNED) {
-            releaseUndeliveredOrders(shipment,
-                    newStatus == ShipmentStatus.RETURNED ? ShipmentStopStatus.RETURNED : ShipmentStopStatus.CANCELLED,
-                    newStatus == ShipmentStatus.RETURNED ? OrderStatus.RETURNED : OrderStatus.CANCELLED);
-            restoreKitchenStockForUndelivered(shipment, "Webhook " + newStatus + " from Ahamove");
-            shipment.setStatus(newStatus);
-            shipment.setCancelledAt(LocalDateTime.now());
+
+            // Handle leftovers for non-successful stops if not already handled
+            String logNote = "Webhook " + request.getStatus() + (request.getSubStatus() != null ? " (" + request.getSubStatus() + ")" : "") + " from Ahamove (Finalizing)";
+            releaseUndeliveredOrders(shipment, ShipmentStopStatus.RETURNED, OrderStatus.RETURNED); // Use RETURNED as default for cleanup
+            restoreKitchenStockForUndelivered(shipment, logNote);
+            
+            if (finalStatus == ShipmentStatus.CANCELLED) {
+                shipment.setCancelledAt(LocalDateTime.now());
+            }
+            
+            // --- TRIGGER SHIPMENT FEE ALLOCATION ---
+            try {
+                shipmentFeeAllocationService.allocateForDeliveredShipment(shipment);
+            } catch (Exception e) {
+                log.error("Lỗi khi phân bổ phí ship cho Shipment #{}: {}", shipment.getShipmentId(), e.getMessage());
+            }
         } else if (newStatus != null && oldStatus != ShipmentStatus.DELIVERED) {
             shipment.setStatus(newStatus);
             if (newStatus == ShipmentStatus.CANCELLED) {
@@ -289,7 +310,9 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                 continue;
             }
 
-            if (stop.getStatus() == ShipmentStopStatus.DELIVERED) {
+            // --- PROTECT ARRIVED STATUS FROM DOWNGRADES ---
+            if (stop.getStatus() == ShipmentStopStatus.DELIVERED || stop.getStatus() == ShipmentStopStatus.ARRIVED) {
+                log.info("Bỏ qua cập nhật cho Stop #{} vì đã là {}", stop.getStopId(), stop.getStatus());
                 continue;
             }
 
@@ -307,7 +330,9 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                     order.setStatus(orderStatus);
                 }
             }
-            storeOrderRepository.saveAll(stopOrders);
+            if (!stopOrders.isEmpty()) {
+                storeOrderRepository.saveAll(stopOrders);
+            }
         }
     }
 
@@ -322,9 +347,46 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                     ? stop.getRemarks() + " | Webhook(Arrived): " + request.getComment()
                     : "Webhook(Arrived): " + request.getComment());
         }
+
+        List<StoreOrder> stopOrders = storeOrderRepository.findByShipmentStop_StopId(stop.getStopId());
+        for (StoreOrder order : stopOrders) {
+            if (order.getStatus() != OrderStatus.DELIVERED && order.getStatus() != OrderStatus.ARRIVED) {
+                order.setStatus(OrderStatus.ARRIVED);
+            }
+        }
+        if (!stopOrders.isEmpty()) {
+            storeOrderRepository.saveAll(stopOrders);
+        }
+    }
+
+    private boolean isAllStopsFinalized(Shipment shipment) {
+        if (shipment.getStops() == null || shipment.getStops().isEmpty()) return false;
+        return shipment.getStops().stream()
+                .allMatch(s -> s.getStatus() == ShipmentStopStatus.ARRIVED 
+                            || s.getStatus() == ShipmentStopStatus.DELIVERED
+                            || s.getStatus() == ShipmentStopStatus.CANCELLED
+                            || s.getStatus() == ShipmentStopStatus.RETURNED);
+    }
+
+    private ShipmentStatus determineFinalShipmentStatus(Shipment shipment) {
+        boolean anyArrived = shipment.getStops().stream()
+                .anyMatch(s -> s.getStatus() == ShipmentStopStatus.ARRIVED);
+        boolean allDelivered = shipment.getStops().stream()
+                .allMatch(s -> s.getStatus() == ShipmentStopStatus.DELIVERED);
+        
+        if (allDelivered) return ShipmentStatus.DELIVERED;
+        if (anyArrived) return ShipmentStatus.ARRIVED;
+        
+        // If nothing arrived/delivered, it's a full return or cancel
+        boolean allCancelled = shipment.getStops().stream()
+                .allMatch(s -> s.getStatus() == ShipmentStopStatus.CANCELLED || s.getStatus() == ShipmentStopStatus.RETURNED);
+        if (allCancelled) return ShipmentStatus.RETURNED;
+        
+        return ShipmentStatus.RETURNED; // Default fallback
     }
 
     private boolean isAllStopsArrivedOrDelivered(Shipment shipment) {
+        if (shipment.getStops() == null || shipment.getStops().isEmpty()) return false;
         return shipment.getStops().stream()
                 .allMatch(s -> s.getStatus() == ShipmentStopStatus.ARRIVED || s.getStatus() == ShipmentStopStatus.DELIVERED);
     }
@@ -355,7 +417,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
     ) {
         List<ShipmentStop> stops = shipment.getStops() == null ? List.of() : shipment.getStops();
         for (ShipmentStop stop : stops) {
-            if (stop.getStatus() == ShipmentStopStatus.DELIVERED) {
+            if (stop.getStatus() == ShipmentStopStatus.DELIVERED || stop.getStatus() == ShipmentStopStatus.ARRIVED) {
                 continue;
             }
 
@@ -382,7 +444,7 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
 
         List<StoreOrder> deliveredOrders = new ArrayList<>();
         for (ShipmentStop stop : shipment.getStops()) {
-            if (stop.getStatus() == ShipmentStopStatus.DELIVERED) {
+            if (stop.getStatus() == ShipmentStopStatus.DELIVERED || stop.getStatus() == ShipmentStopStatus.ARRIVED) {
                 deliveredOrders.addAll(storeOrderRepository.findByShipmentStop_StopId(stop.getStopId()));
             }
         }
