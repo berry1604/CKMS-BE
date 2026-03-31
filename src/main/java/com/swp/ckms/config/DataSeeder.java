@@ -210,8 +210,8 @@ public class DataSeeder implements CommandLineRunner {
                     .address("Số 1 Mạc Đĩnh Chi, Phường Đa Kao, Quận 1, Thành phố Hồ Chí Minh")
                     .paymentCycle("MONTHLY")
                     .phoneNumber("84377774968")
-                    .latitude("10.782140")
-                    .longitude("106.701484")
+                    .latitude(10.782140)
+                    .longitude(106.701484)
                     .build());
             System.out.println(">>> Seeded default Franchise Store");
 
