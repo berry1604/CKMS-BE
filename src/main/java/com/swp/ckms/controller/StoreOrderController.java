@@ -1,6 +1,8 @@
 package com.swp.ckms.controller;
 
+import com.swp.ckms.dto.request.ApprovalMaterialPreviewRequest;
 import com.swp.ckms.dto.request.StoreOrderRequest;
+import com.swp.ckms.dto.response.ApprovalMaterialPreviewResponse;
 import com.swp.ckms.dto.response.StoreOrderResponse;
 import com.swp.ckms.service.StoreOrderService;
 import jakarta.validation.Valid;
@@ -87,6 +89,13 @@ public class StoreOrderController {
         OrderStatus status = OrderStatus.valueOf(statusStr.toUpperCase());
         StoreOrderResponse response = storeOrderService.updateOrderStatus(id, status);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/approval/material-preview")
+    @PreAuthorize("hasAuthority('APPROVE_STORE_ORDER')")
+    public ResponseEntity<ApprovalMaterialPreviewResponse> previewApprovalMaterialUsage(
+            @Valid @RequestBody ApprovalMaterialPreviewRequest request) {
+        return ResponseEntity.ok(storeOrderService.previewApprovalMaterialUsage(request));
     }
 
     @PatchMapping("/{id}/submit")

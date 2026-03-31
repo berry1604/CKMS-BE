@@ -1,13 +1,19 @@
 package com.swp.ckms.service.impl;
 
+import com.swp.ckms.dto.request.ApprovalMaterialPreviewRequest;
 import com.swp.ckms.dto.request.OrderItemRequest;
 import com.swp.ckms.dto.request.StoreOrderRequest;
+import com.swp.ckms.dto.response.ApprovalMaterialPreviewResponse;
 import com.swp.ckms.dto.response.OrderDetailResponse;
 import com.swp.ckms.dto.response.StoreOrderResponse;
 import com.swp.ckms.entity.CentralKitchen;
 import com.swp.ckms.entity.FranchiseStore;
+import com.swp.ckms.entity.KitchenWarehouse;
+import com.swp.ckms.entity.Material;
 import com.swp.ckms.entity.OrderDetail;
 import com.swp.ckms.entity.Product;
+import com.swp.ckms.entity.Recipe;
+import com.swp.ckms.entity.RecipeDetail;
 import com.swp.ckms.entity.StoreOrder;
 import com.swp.ckms.entity.User;
 import com.swp.ckms.entity.AllocationItem;
@@ -17,12 +23,16 @@ import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.repository.AllocationItemRepository;
 import com.swp.ckms.repository.FranchiseStoreRepository;
 import com.swp.ckms.repository.InvoiceRepository;
+import com.swp.ckms.repository.KitchenStockItemRepository;
+import com.swp.ckms.repository.KitchenWarehouseRepository;
 import com.swp.ckms.repository.ProductRepository;
+import com.swp.ckms.repository.RecipeRepository;
 import com.swp.ckms.repository.StoreOrderRepository;
 import com.swp.ckms.repository.StoreStockItemRepository;
 import com.swp.ckms.repository.StoreWarehouseRepository;
 import com.swp.ckms.repository.UserRepository;
 import com.swp.ckms.repository.CentralKitchenRepository;
+import com.swp.ckms.repository.projection.MaterialStockProjection;
 import com.swp.ckms.repository.specification.StoreOrderSpecification;
 import com.swp.ckms.entity.StoreWarehouse;
 import com.swp.ckms.exception.business.BusinessRuleViolationException;
@@ -40,10 +50,17 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -61,6 +78,9 @@ public class StoreOrderServiceImpl implements StoreOrderService {
     private final com.swp.ckms.service.NotificationService notificationService;
     private final com.swp.ckms.util.RecipientResolver recipientResolver;
     private final CentralKitchenRepository centralKitchenRepository;
+    private final KitchenWarehouseRepository kitchenWarehouseRepository;
+    private final KitchenStockItemRepository kitchenStockItemRepository;
+    private final RecipeRepository recipeRepository;
 
     @Override
     public StoreOrderResponse createOrder(StoreOrderRequest request, String username) {
@@ -184,6 +204,188 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
         return mapToOrderResponse(order);
     }
+
+        @Override
+        @Transactional(readOnly = true)
+        public ApprovalMaterialPreviewResponse previewApprovalMaterialUsage(ApprovalMaterialPreviewRequest request) {
+        Long kitchenId = request.getKitchenId() != null ? request.getKitchenId() : 1L;
+        KitchenWarehouse warehouse = kitchenWarehouseRepository.findByKitchen_KitchenId(kitchenId)
+            .stream()
+            .findFirst()
+            .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy kho cho bếp ID: " + kitchenId));
+
+            List<Long> selectedOrderIds = request.getOrderIds() == null
+                ? new ArrayList<>()
+                : request.getOrderIds().stream()
+                    .filter(java.util.Objects::nonNull)
+                    .collect(Collectors.collectingAndThen(
+                        Collectors.toCollection(LinkedHashSet::new),
+                        ArrayList::new
+                    ));
+
+            if (selectedOrderIds.isEmpty()) {
+                return buildStockOnlyPreview(kitchenId, warehouse);
+            }
+
+        Map<Long, StoreOrder> orderById = storeOrderRepository.findAllById(selectedOrderIds).stream()
+            .collect(Collectors.toMap(StoreOrder::getOrderId, o -> o));
+
+        Set<Long> productIds = orderById.values().stream()
+            .flatMap(order -> order.getOrderDetails().stream())
+            .map(detail -> detail.getProduct().getId())
+            .collect(Collectors.toSet());
+
+        Map<Long, Recipe> recipeByProductId = new HashMap<>();
+        for (Long productId : productIds) {
+            recipeRepository.findByProductIdAndIsActiveTrue(productId)
+                .ifPresent(recipe -> recipeByProductId.put(productId, recipe));
+        }
+
+        Map<Long, String> materialNameById = new HashMap<>();
+        Map<Long, String> materialUnitById = new HashMap<>();
+        Set<Long> materialIds = new LinkedHashSet<>();
+
+        for (Recipe recipe : recipeByProductId.values()) {
+            for (RecipeDetail recipeDetail : recipe.getRecipeDetails()) {
+            Material material = recipeDetail.getMaterial();
+            materialIds.add(material.getId());
+            materialNameById.put(material.getId(), material.getName());
+            materialUnitById.put(material.getId(), material.getUnit() != null ? material.getUnit().name() : null);
+            }
+        }
+
+        Map<Long, BigDecimal> availableMaterialMap = new HashMap<>();
+        if (!materialIds.isEmpty()) {
+            List<MaterialStockProjection> stocks = kitchenStockItemRepository.getNetAvailableStockForMaterials(
+                warehouse.getWarehouseId(),
+                new ArrayList<>(materialIds)
+            );
+            availableMaterialMap.putAll(stocks.stream().collect(Collectors.toMap(
+                MaterialStockProjection::getMaterialId,
+                stock -> safe(stock.getTotalQuantity())
+            )));
+        }
+
+        Map<Long, BigDecimal> selectedRequiredByMaterial = new HashMap<>();
+        Map<Long, BigDecimal> approvableRequiredByMaterial = new HashMap<>();
+        Map<Long, BigDecimal> runningAvailableByMaterial = new HashMap<>(availableMaterialMap);
+        List<ApprovalMaterialPreviewResponse.OrderPreviewResult> orderResults = new ArrayList<>();
+
+        int approvableCount = 0;
+
+        for (Long orderId : selectedOrderIds) {
+            StoreOrder order = orderById.get(orderId);
+            if (order == null) {
+            orderResults.add(ApprovalMaterialPreviewResponse.OrderPreviewResult.builder()
+                .orderId(orderId)
+                .status("NOT_FOUND")
+                .requestedQty(BigDecimal.ZERO)
+                .approvable(false)
+                .reason("Order không tồn tại")
+                .build());
+            continue;
+            }
+
+            BigDecimal requestedQty = order.getOrderDetails().stream()
+                .map(detail -> BigDecimal.valueOf(detail.getQuantity()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            if (order.getStatus() != OrderStatus.SUBMITTED) {
+            orderResults.add(ApprovalMaterialPreviewResponse.OrderPreviewResult.builder()
+                .orderId(order.getOrderId())
+                .deliveryDate(order.getDeliveryDate())
+                .status(order.getStatus().name())
+                .requestedQty(requestedQty)
+                .approvable(false)
+                .reason("Chỉ preview được đơn ở trạng thái SUBMITTED")
+                .build());
+            continue;
+            }
+
+            MaterialRequirementResult requirementResult = calculateOrderMaterialRequirements(order, recipeByProductId);
+            merge(selectedRequiredByMaterial, requirementResult.requirements);
+
+            if (!requirementResult.valid) {
+            orderResults.add(ApprovalMaterialPreviewResponse.OrderPreviewResult.builder()
+                .orderId(order.getOrderId())
+                .deliveryDate(order.getDeliveryDate())
+                .status(order.getStatus().name())
+                .requestedQty(requestedQty)
+                .approvable(false)
+                .reason(requirementResult.reason)
+                .build());
+            continue;
+            }
+
+            if (!canFulfill(requirementResult.requirements, runningAvailableByMaterial)) {
+            orderResults.add(ApprovalMaterialPreviewResponse.OrderPreviewResult.builder()
+                .orderId(order.getOrderId())
+                .deliveryDate(order.getDeliveryDate())
+                .status(order.getStatus().name())
+                .requestedQty(requestedQty)
+                .approvable(false)
+                .reason("Không đủ nguyên liệu tồn kho để duyệt đơn này")
+                .build());
+            continue;
+            }
+
+            deduct(requirementResult.requirements, runningAvailableByMaterial);
+            merge(approvableRequiredByMaterial, requirementResult.requirements);
+            approvableCount++;
+
+            orderResults.add(ApprovalMaterialPreviewResponse.OrderPreviewResult.builder()
+                .orderId(order.getOrderId())
+                .deliveryDate(order.getDeliveryDate())
+                .status(order.getStatus().name())
+                .requestedQty(requestedQty)
+                .approvable(true)
+                .reason("Có thể duyệt")
+                .build());
+        }
+
+        Set<Long> allMaterialIds = new LinkedHashSet<>();
+        allMaterialIds.addAll(materialIds);
+        allMaterialIds.addAll(selectedRequiredByMaterial.keySet());
+        allMaterialIds.addAll(availableMaterialMap.keySet());
+
+        List<ApprovalMaterialPreviewResponse.MaterialUsagePreview> materials = allMaterialIds.stream()
+            .sorted(Comparator.naturalOrder())
+            .map(materialId -> {
+                BigDecimal available = safe(availableMaterialMap.get(materialId));
+                BigDecimal requiredSelected = safe(selectedRequiredByMaterial.get(materialId));
+                BigDecimal requiredApprovable = safe(approvableRequiredByMaterial.get(materialId));
+                BigDecimal remaining = available.subtract(requiredApprovable);
+                BigDecimal shortage = requiredSelected.subtract(available).max(BigDecimal.ZERO);
+
+                return ApprovalMaterialPreviewResponse.MaterialUsagePreview.builder()
+                    .materialId(materialId)
+                    .materialName(materialNameById.getOrDefault(materialId, "Unknown"))
+                    .unit(materialUnitById.get(materialId))
+                    .availableQty(available)
+                    .requiredQtyForSelected(requiredSelected)
+                    .requiredQtyForApprovable(requiredApprovable)
+                    .remainingQty(remaining)
+                    .shortageQty(shortage)
+                    .build();
+            })
+            .collect(Collectors.toList());
+
+        BigDecimal approvableRate = BigDecimal.ZERO;
+        if (!selectedOrderIds.isEmpty()) {
+            approvableRate = BigDecimal.valueOf(approvableCount)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(selectedOrderIds.size()), 2, RoundingMode.HALF_UP);
+        }
+
+        return ApprovalMaterialPreviewResponse.builder()
+            .kitchenId(kitchenId)
+            .selectedOrderCount(selectedOrderIds.size())
+            .approvableOrderCount(approvableCount)
+            .approvableRatePercent(approvableRate)
+            .orderResults(orderResults)
+            .materials(materials)
+            .build();
+        }
 
     @Override
     @Transactional
@@ -676,6 +878,126 @@ public class StoreOrderServiceImpl implements StoreOrderService {
 
     private BigDecimal calculateOrderFee(List<OrderDetail> details) {
         return StoreOrderAmountUtils.calculateOrderFeeFromDetails(details);
+    }
+
+    private ApprovalMaterialPreviewResponse buildStockOnlyPreview(Long kitchenId, KitchenWarehouse warehouse) {
+        Map<Long, ApprovalMaterialPreviewResponse.MaterialUsagePreview> materialMap = new LinkedHashMap<>();
+
+        for (com.swp.ckms.entity.KitchenStockItem stockItem : kitchenStockItemRepository.findByWarehouse_WarehouseId(warehouse.getWarehouseId())) {
+            if (stockItem.getMaterial() == null) {
+                continue;
+            }
+
+            Long materialId = stockItem.getMaterial().getId();
+            BigDecimal netAvailable = safe(stockItem.getQuantity()).subtract(safe(stockItem.getReservedQuantity()));
+
+            ApprovalMaterialPreviewResponse.MaterialUsagePreview current = materialMap.get(materialId);
+            BigDecimal newAvailable = netAvailable;
+            if (current != null) {
+                newAvailable = safe(current.getAvailableQty()).add(netAvailable);
+            }
+
+            materialMap.put(materialId, ApprovalMaterialPreviewResponse.MaterialUsagePreview.builder()
+                .materialId(materialId)
+                .materialName(stockItem.getMaterial().getName())
+                .unit(stockItem.getMaterial().getUnit() != null ? stockItem.getMaterial().getUnit().name() : null)
+                .availableQty(newAvailable)
+                .requiredQtyForSelected(BigDecimal.ZERO)
+                .requiredQtyForApprovable(BigDecimal.ZERO)
+                .remainingQty(newAvailable)
+                .shortageQty(BigDecimal.ZERO)
+                .build());
+        }
+
+        List<ApprovalMaterialPreviewResponse.MaterialUsagePreview> materials = materialMap.values().stream()
+            .sorted(Comparator.comparing(ApprovalMaterialPreviewResponse.MaterialUsagePreview::getMaterialId))
+            .collect(Collectors.toList());
+
+        return ApprovalMaterialPreviewResponse.builder()
+            .kitchenId(kitchenId)
+            .selectedOrderCount(0)
+            .approvableOrderCount(0)
+            .approvableRatePercent(BigDecimal.ZERO)
+            .orderResults(List.of())
+            .materials(materials)
+            .build();
+    }
+
+    private MaterialRequirementResult calculateOrderMaterialRequirements(StoreOrder order, Map<Long, Recipe> recipeByProductId) {
+        Map<Long, BigDecimal> requirements = new LinkedHashMap<>();
+
+        for (OrderDetail detail : order.getOrderDetails()) {
+            Long productId = detail.getProduct().getId();
+            Recipe recipe = recipeByProductId.get(productId);
+            if (recipe == null) {
+                return MaterialRequirementResult.invalid("Thiếu recipe active cho sản phẩm: " + detail.getProduct().getName());
+            }
+
+            BigDecimal yield = safe(recipe.getYield());
+            if (yield.compareTo(BigDecimal.ZERO) <= 0) {
+                return MaterialRequirementResult.invalid("Recipe không hợp lệ (yield <= 0) cho sản phẩm: " + detail.getProduct().getName());
+            }
+
+            BigDecimal orderQty = BigDecimal.valueOf(detail.getQuantity());
+
+            for (RecipeDetail recipeDetail : recipe.getRecipeDetails()) {
+                BigDecimal quantityNeeded = safe(recipeDetail.getQuantityNeeded());
+                BigDecimal required = quantityNeeded
+                        .multiply(orderQty)
+                        .divide(yield, 4, RoundingMode.HALF_UP);
+
+                requirements.merge(recipeDetail.getMaterial().getId(), required, BigDecimal::add);
+            }
+        }
+
+        return MaterialRequirementResult.valid(requirements);
+    }
+
+    private boolean canFulfill(Map<Long, BigDecimal> requirements, Map<Long, BigDecimal> availableByMaterial) {
+        for (Map.Entry<Long, BigDecimal> entry : requirements.entrySet()) {
+            BigDecimal available = safe(availableByMaterial.get(entry.getKey()));
+            if (available.compareTo(safe(entry.getValue())) < 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void deduct(Map<Long, BigDecimal> requirements, Map<Long, BigDecimal> availableByMaterial) {
+        for (Map.Entry<Long, BigDecimal> entry : requirements.entrySet()) {
+            BigDecimal available = safe(availableByMaterial.get(entry.getKey()));
+            availableByMaterial.put(entry.getKey(), available.subtract(safe(entry.getValue())));
+        }
+    }
+
+    private void merge(Map<Long, BigDecimal> accumulator, Map<Long, BigDecimal> values) {
+        for (Map.Entry<Long, BigDecimal> entry : values.entrySet()) {
+            accumulator.merge(entry.getKey(), safe(entry.getValue()), BigDecimal::add);
+        }
+    }
+
+    private BigDecimal safe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private static class MaterialRequirementResult {
+        private final boolean valid;
+        private final String reason;
+        private final Map<Long, BigDecimal> requirements;
+
+        private MaterialRequirementResult(boolean valid, String reason, Map<Long, BigDecimal> requirements) {
+            this.valid = valid;
+            this.reason = reason;
+            this.requirements = requirements;
+        }
+
+        private static MaterialRequirementResult valid(Map<Long, BigDecimal> requirements) {
+            return new MaterialRequirementResult(true, null, requirements);
+        }
+
+        private static MaterialRequirementResult invalid(String reason) {
+            return new MaterialRequirementResult(false, reason, Map.of());
+        }
     }
 
     private void createInvoiceForOrder(StoreOrder order) {
