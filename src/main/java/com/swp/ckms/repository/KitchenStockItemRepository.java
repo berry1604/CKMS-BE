@@ -80,4 +80,6 @@ public interface KitchenStockItemRepository extends JpaRepository<KitchenStockIt
             @Param("productId") Long productId, 
             @Param("planId") Long planId);
 
+    List<KitchenStockItem> findByProductionPlan_PlanId(Long planId);
+
 }

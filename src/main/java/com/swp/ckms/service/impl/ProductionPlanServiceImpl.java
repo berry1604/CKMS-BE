@@ -30,6 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -86,8 +87,10 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         } else {
             // Priority 2: Fallback to user's assigned kitchen
             kitchen = currentUser.getKitchen();
-            if (kitchen == null || kitchen.getKitchenId() == null) {
-                throw new AccessDeniedException("User does not belong to any Central Kitchen. Please provide kitchenId in request.");
+            if (kitchen == null) {
+                // Single Kitchen Refactor: Default to Kitchen ID 1 for system-level users (Coordinator/Manager)
+                kitchen = kitchenRepository.findById(1L)
+                        .orElseThrow(() -> new ResourceNotFoundException("Default Kitchen not found with ID 1"));
             }
         }
 
@@ -194,16 +197,26 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
         for (KitchenStockItem item : stockItems) {
             if (remainingToReserve.compareTo(BigDecimal.ZERO) <= 0) break;
 
-            BigDecimal itemAvailable = item.getQuantity().subtract(item.getReservedQuantity());
+            BigDecimal currentReserved = item.getReservedQuantity() != null ? item.getReservedQuantity() : BigDecimal.ZERO;
+            BigDecimal itemAvailable = item.getQuantity().subtract(currentReserved);
             if (itemAvailable.compareTo(BigDecimal.ZERO) <= 0) continue;
 
             BigDecimal reservedInThisItem = itemAvailable.min(remainingToReserve);
-            item.setReservedQuantity(item.getReservedQuantity().add(reservedInThisItem));
+            item.setReservedQuantity(currentReserved.add(reservedInThisItem));
             remainingToReserve = remainingToReserve.subtract(reservedInThisItem);
         }
         
         if (remainingToReserve.compareTo(BigDecimal.ZERO) > 0) {
-            log.warn("Could not reserve full quantity for material ID {}. Short by {}", materialId, remainingToReserve);
+            BigDecimal actualAvailable = totalRequired.subtract(remainingToReserve);
+            throw new InsufficientMaterialException(
+                "Không đủ nguyên liệu để reserve. Material ID: " + materialId + ", cần: " + totalRequired + ", khả dụng: " + actualAvailable,
+                List.of(com.swp.ckms.dto.response.MissingMaterialResponse.builder()
+                    .materialId(materialId)
+                    .requiredQuantity(totalRequired)
+                    .availableQuantity(actualAvailable)
+                    .missingQuantity(remainingToReserve)
+                    .build())
+            );
         }
     }
 
@@ -428,6 +441,7 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                         .type(InventoryTransactionType.PRODUCTION_DEDUCT)
                         .refId(planId)
                         .refLineId(req.getId())
+                        .expiryDate(item.getExpiryDate()) // Lưu expiry để cancel có thể match lại đúng stock item
                         .createdAt(LocalDateTime.now())
                         .build());
             }
@@ -530,22 +544,16 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
                     .actualProducedQty(outputReq.getActualQty())
                     .build());
 
-            // Feedback Loop: Add produced items to Kitchen Stock
-            KitchenStockItem stockItem = kitchenStockItemRepository
-                    .findByWarehouse_WarehouseIdAndProduct_Id(warehouse.getWarehouseId(), product.getId())
-                    .stream().findFirst()
-                    .orElseGet(() -> KitchenStockItem.builder()
-                            .warehouse(warehouse)
-                            .product(product)
-                            .quantity(BigDecimal.ZERO)
-                            .reservedQuantity(BigDecimal.ZERO)
-                            .build());
-
-            stockItem.setQuantity(stockItem.getQuantity().add(outputReq.getActualQty()));
-            stockItem.setProductionPlan(plan);
-            if (plan.getPlannedDate() != null) {
-                stockItem.setExpiryDate(plan.getPlannedDate().plusDays(3));
-            }
+            // Feedback Loop: Add produced items to Kitchen Stock as a NEW batch record (Lot-based tracking)
+            KitchenStockItem stockItem = KitchenStockItem.builder()
+                    .warehouse(warehouse)
+                    .product(product)
+                    .quantity(outputReq.getActualQty())
+                    .reservedQuantity(BigDecimal.ZERO)
+                    .productionPlan(plan)
+                    .expiryDate(plan.getPlannedDate() != null ? plan.getPlannedDate().plusDays(3) : null)
+                    .build();
+            
             kitchenStockItemRepository.save(stockItem);
 
             // Audit
@@ -623,74 +631,121 @@ public class ProductionPlanServiceImpl implements ProductionPlanService {
             throw new OrderAssignmentConflictException("Cannot cancel a FINISHED Production Plan.");
         }
 
-        // Step 5: Audit Return Logic (If plan was IN_PRODUCTION and user wants to return)
+        // Step 5a: Rollback produced goods (If plan was PRODUCED)
+        // Thành phẩm đã nhập kho bếp trong reportProductionYield → cần trừ lại
+        if (plan.getStatus() == ProductionPlanStatus.PRODUCED) {
+            log.info("Cancelling PRODUCED plan {} — rolling back finished products from kitchen stock", planId);
+
+            KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
+                    .stream().findFirst()
+                    .orElseThrow(() -> new ResourceNotFoundException("No warehouse found for kitchen: " + plan.getKitchen().getKitchenId()));
+
+            // Tìm tất cả KitchenStockItem được tạo bởi plan này (thành phẩm)
+            List<KitchenStockItem> producedStockItems = kitchenStockItemRepository.findByProductionPlan_PlanId(planId);
+
+            for (KitchenStockItem stockItem : producedStockItems) {
+                BigDecimal qtyToRemove = stockItem.getQuantity();
+
+                if (qtyToRemove.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+
+                // Trừ quantity về 0 (không xóa record để giữ audit trail)
+                stockItem.setQuantity(BigDecimal.ZERO);
+                stockItem.setReservedQuantity(BigDecimal.ZERO);
+                kitchenStockItemRepository.save(stockItem);
+
+                // Ghi audit transaction: xuất kho ngược thành phẩm
+                inventoryTransactionRepository.save(InventoryTransaction.builder()
+                        .kitchenWarehouse(warehouse)
+                        .product(stockItem.getProduct())
+                        .quantity(qtyToRemove.negate()) // Âm = xuất kho
+                        .type(InventoryTransactionType.PRODUCTION_RETURN)
+                        .refId(planId)
+                        .expiryDate(stockItem.getExpiryDate())
+                        .productionPlan(plan)
+                        .note("Rollback produced goods — cancelled production plan")
+                        .createdAt(LocalDateTime.now())
+                        .build());
+            }
+            log.info("Rolled back {} product stock items for plan {}", producedStockItems.size(), planId);
+        }
+
+        // Step 5b: Return raw materials (If plan was IN_PRODUCTION and user wants to return)
+        // Nguyên liệu đã bị deduct trong startProductionPlan → hoàn trả lại kho
         if (returnInventory && plan.getStatus() == ProductionPlanStatus.IN_PRODUCTION) {
             // Check for Double Return Protection
             boolean alreadyReturned = inventoryTransactionRepository.existsByTypeAndRefId(
                     InventoryTransactionType.PRODUCTION_RETURN, planId);
 
             if (!alreadyReturned) {
+                KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
+                        .stream().findFirst()
+                        .orElseThrow(() -> new ResourceNotFoundException("No warehouse found for kitchen: " + plan.getKitchen().getKitchenId()));
+
                 // Get all DEDUCT transactions for this plan
                 List<InventoryTransaction> deductTransactions = inventoryTransactionRepository
                         .findByRefIdAndType(planId, InventoryTransactionType.PRODUCTION_DEDUCT);
 
                 for (InventoryTransaction tx : deductTransactions) {
-                    // Find or Restore Stock item with Pessimistic Lock
-                    // Logic: Normally we'd find an item with same Material + Expiry + Warehouse.
-                    // If not exists, we might need to recreate it.
-                    // For now, let's assume we try to find a compatible one first.
-                    
-                    List<KitchenStockItem> targetItems = kitchenStockItemRepository.lockMaterialsForDeduction(
-                            tx.getKitchenWarehouse().getWarehouseId(), 
+                    BigDecimal returnQty = tx.getQuantity().abs();
+                    LocalDate originalExpiry = tx.getExpiryDate();
+
+                    // Tìm stock item gốc theo material + expiry date
+                    List<KitchenStockItem> candidates = kitchenStockItemRepository.lockMaterialsForDeduction(
+                            warehouse.getWarehouseId(),
                             Collections.singletonList(tx.getMaterial().getId())
-                    ).stream()
-                    .filter(i -> i.getExpiryDate() == null ? tx.getMaterial().getId() != null : true ) // Simplified check
-                    .collect(Collectors.toList());
-                    
-                    KitchenStockItem targetItem = null;
-                    // Try to find exact match on expiry date (could be null)
-                    for (KitchenStockItem k : targetItems) {
-                        if (Objects.equals(k.getExpiryDate(), k.getExpiryDate())) { // This is placeholder logic, need real match
-                             // We should probably have a specific find-and-lock by warehouse, material, expiry
-                        }
+                    );
+
+                    KitchenStockItem targetItem = candidates.stream()
+                            .filter(k -> Objects.equals(k.getExpiryDate(), originalExpiry))
+                            .findFirst()
+                            .orElse(null);
+
+                    if (targetItem != null) {
+                        // Cộng ngược vào stock item gốc
+                        targetItem.setQuantity(targetItem.getQuantity().add(returnQty));
+                    } else {
+                        // Không tìm được item gốc → tạo mới giữ đúng expiry date
+                        kitchenStockItemRepository.save(KitchenStockItem.builder()
+                                .warehouse(warehouse)
+                                .material(tx.getMaterial())
+                                .quantity(returnQty)
+                                .reservedQuantity(BigDecimal.ZERO)
+                                .expiryDate(originalExpiry)
+                                .build());
                     }
-                    
-                    // IF NO MATCH, CREATE NEW. IF MATCH, ADD QUANTITY.
-                    
-                    // Actually, the most robust way in the current schema without an 'original_stock_item_id' 
-                    // is to create a new record representing the returned goods to maintain the return's identity.
-                    kitchenStockItemRepository.save(KitchenStockItem.builder()
-                            .warehouse(tx.getKitchenWarehouse())
-                            .material(tx.getMaterial())
-                            .quantity(tx.getQuantity().abs()) // Restore the absolute value
-                            .expiryDate(null) // Ideally we'd store expiry in Transaction too, or trace back. 
-                            .build());
 
                     // Record Audit Return
                     inventoryTransactionRepository.save(InventoryTransaction.builder()
-                            .kitchenWarehouse(tx.getKitchenWarehouse())
+                            .kitchenWarehouse(warehouse)
                             .material(tx.getMaterial())
-                            .quantity(tx.getQuantity().abs())
+                            .quantity(returnQty)
                             .type(InventoryTransactionType.PRODUCTION_RETURN)
                             .refId(planId)
                             .refLineId(tx.getRefLineId())
-                            .note("Auto-return from cancelled production plan")
+                            .expiryDate(originalExpiry)
+                            .note("Auto-return materials from cancelled production plan")
                             .createdAt(LocalDateTime.now())
                             .build());
                 }
+                log.info("Returned {} material deduction(s) for plan {}", deductTransactions.size(), planId);
             }
         }
 
-        // Step 6: Atomic Release Orders
-        storeOrderRepository.releaseOrdersFromPlan(planId);
+        // Step 6: Atomic Release Orders (chỉ revert SCHEDULED và LOCKED → APPROVED)
+        int releasedCount = storeOrderRepository.releaseOrdersFromPlan(planId);
+        log.info("Released {} orders from plan {}", releasedCount, planId);
 
         // Step 7: Release Inventory Reservations
-        KitchenWarehouse warehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
+        // Chỉ cần release cho PLANNED và READY_TO_PRODUCE (nguyên liệu chỉ reserved, chưa deduct)
+        // IN_PRODUCTION và PRODUCED đã deduct rồi → không cần release reservation
+        KitchenWarehouse reserveWarehouse = warehouseRepository.findByKitchen_KitchenId(plan.getKitchen().getKitchenId())
                 .stream().findFirst().orElse(null);
-        if (warehouse != null && plan.getStatus() != ProductionPlanStatus.IN_PRODUCTION && plan.getStatus() != ProductionPlanStatus.PRODUCED) {
+        if (reserveWarehouse != null && plan.getStatus() != ProductionPlanStatus.IN_PRODUCTION && plan.getStatus() != ProductionPlanStatus.PRODUCED) {
             List<ProductionPlanMaterialRequirement> requirements = materialRequirementRepository.findByPlan_PlanId(planId);
             for (ProductionPlanMaterialRequirement req : requirements) {
-                releaseReservation(warehouse.getWarehouseId(), req.getMaterial().getId(), req.getRequiredQuantity());
+                releaseReservation(reserveWarehouse.getWarehouseId(), req.getMaterial().getId(), req.getRequiredQuantity());
             }
         }
 
