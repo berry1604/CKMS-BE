@@ -28,8 +28,7 @@ import com.swp.ckms.repository.KitchenWarehouseRepository;
 import com.swp.ckms.repository.ProductRepository;
 import com.swp.ckms.repository.RecipeRepository;
 import com.swp.ckms.repository.StoreOrderRepository;
-import com.swp.ckms.repository.StoreStockItemRepository;
-import com.swp.ckms.repository.StoreWarehouseRepository;
+import com.swp.ckms.repository.StoreOrderRepository;
 import com.swp.ckms.repository.UserRepository;
 import com.swp.ckms.repository.CentralKitchenRepository;
 import com.swp.ckms.repository.projection.MaterialStockProjection;
@@ -647,6 +646,7 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 .deliveryDate(order.getDeliveryDate())
                 .storeName(order.getStore() != null ? order.getStore().getName() : null)
                 .storePhone(order.getStore() != null ? order.getStore().getPhoneNumber() : null)
+                .trackingLink(order.getShipment() != null ? order.getShipment().getTrackingLink() : null)
                 .orderDetails(detailResponses)
                 .build();
     }

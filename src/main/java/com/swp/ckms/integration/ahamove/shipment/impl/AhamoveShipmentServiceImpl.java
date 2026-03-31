@@ -161,11 +161,34 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                         continue;
                     }
 
-                    String recipient = recipientResolver.resolveStoreManagerEmail(stop.getStore().getStoreId(),
-                            shipment.getCreatedBy() != null ? shipment.getCreatedBy().getUserId() : null);
+                    // Guard: Don't notify if the stop is already delivered
+                    if (stop.getStatus() == ShipmentStopStatus.DELIVERED) {
+                        log.info("Bỏ qua thông báo cho Store {} (Stop #{} đã giao xong)", 
+                                stop.getStore().getName(), stop.getStopId());
+                        continue;
+                    }
+
+                    // Identify recipients: prioritizing the actual STAFF who created the orders at this stop
+                    java.util.Set<String> recipients = new java.util.HashSet<>();
+                    if (stop.getStoreOrders() != null) {
+                        for (com.swp.ckms.entity.StoreOrder order : stop.getStoreOrders()) {
+                            if (order.getCreatedByUser() != null && order.getCreatedByUser().getEmail() != null) {
+                                recipients.add(order.getCreatedByUser().getEmail());
+                            }
+                        }
+                    }
+
+                    // Fallback to Store Manager if no order creators found
+                    if (recipients.isEmpty()) {
+                        String managerEmail = recipientResolver.resolveStoreManagerEmail(stop.getStore().getStoreId(),
+                                shipment.getCreatedBy() != null ? shipment.getCreatedBy().getUserId() : null);
+                        if (managerEmail != null) {
+                            recipients.add(managerEmail);
+                        }
+                    }
                     
-                    if (recipient == null) {
-                        log.warn("Không tìm thấy email Quản lý cho Store #{} của Shipment #{}", 
+                    if (recipients.isEmpty()) {
+                        log.warn("Không tìm thấy email người nhận cho Store #{} của Shipment #{}", 
                                 stop.getStore().getStoreId(), shipment.getShipmentId());
                         continue;
                     }
@@ -175,17 +198,24 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                     payload.put("storeName", stop.getStore().getName());
                     payload.put("driverName", shipment.getDriverName() != null ? shipment.getDriverName() : "AhaMove Driver");
                     payload.put("driverPhone", shipment.getDriverPhone() != null ? shipment.getDriverPhone() : "N/A");
-                    payload.put("vehicleInfo", shipment.getVehicleInfo() != null ? shipment.getVehicleInfo() : "Theo dõi qua Ahamove");
-                    payload.put("trackingLink", "http://localhost:5173/shipments/" + shipment.getShipmentId());
+                    payload.put("vehicleInfo", (shipment.getVehicleInfo() != null && !shipment.getVehicleInfo().isEmpty()) 
+                            ? shipment.getVehicleInfo() : "Theo dõi qua Ahamove");
+                    
+                    String trackingUrl = (shipment.getTrackingLink() != null && !shipment.getTrackingLink().isEmpty())
+                            ? shipment.getTrackingLink()
+                            : "http://localhost:5173/shipments/" + shipment.getShipmentId();
+                    payload.put("trackingLink", trackingUrl);
 
-                    notificationService.createEmailNotification(
-                            com.swp.ckms.enums.NotificationType.SHIPMENT_STARTED,
-                            recipient,
-                            "shipment-started.html",
-                            payload,
-                            "SHIPMENT_STARTED_" + shipment.getShipmentId() + "_STORE_" + stop.getStore().getStoreId()
-                    );
-                    log.info("Đã tạo email thông báo lộ trình cho Store: {} (Recipient: {})", stop.getStore().getName(), recipient);
+                    for (String recipientEmail : recipients) {
+                        notificationService.createEmailNotification(
+                                com.swp.ckms.enums.NotificationType.SHIPMENT_STARTED,
+                                recipientEmail,
+                                "shipment-started.html",
+                                payload,
+                                "SHIPMENT_STARTED_" + shipment.getShipmentId() + "_STORE_" + stop.getStore().getStoreId() + "_TO_" + recipientEmail
+                        );
+                        log.info("Đã tạo email thông báo lộ trình cho Store: {} (Recipient: {})", stop.getStore().getName(), recipientEmail);
+                    }
                 }
             } catch (Exception e) {
                 log.error("Failed to trigger shipment started notification via Ahamove Webhook", e);
