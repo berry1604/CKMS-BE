@@ -466,6 +466,31 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         if (order.getStatus() == OrderStatus.SUBMITTED) {
             order.setStatus(OrderStatus.CANCELLED);
             storeOrderRepository.save(order);
+            
+            // Notification: Send email to Store Manager about the cancelled order
+            try {
+                String recipient = recipientResolver.resolveStoreManagerEmail(order.getStore().getStoreId(), order.getCreatedByUser().getUserId());
+                if (recipient != null) {
+                    java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                    payload.put("orderId", order.getOrderId());
+                    payload.put("storeName", order.getStore().getName());
+                    payload.put("creatorName", order.getCreatedByUser().getUsername());
+                    payload.put("cancellerName", user.getUsername());
+                    
+                    java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                    payload.put("deliveryDate", order.getDeliveryDate().format(dtf));
+                    
+                    notificationService.createEmailNotification(
+                            com.swp.ckms.enums.NotificationType.ORDER_STATUS_CHANGED,
+                            recipient,
+                            "order-cancelled.html",
+                            payload,
+                            "ORDER_CANCELLED_" + order.getOrderId()
+                    );
+                }
+            } catch (Exception e) {
+                log.error("Failed to send order cancellation notification", e);
+            }
             return;
         }
 
@@ -859,12 +884,29 @@ public class StoreOrderServiceImpl implements StoreOrderService {
                 java.util.Map<String, Object> payload = new java.util.HashMap<>();
                 payload.put("originalOrderId", originalOrder.getOrderId());
                 payload.put("newOrderId", savedNewOrder.getOrderId());
-                payload.put("deliveryDate", originalOrder.getDeliveryDate().toString());
+                // Vietnamese Date format 
+                java.time.format.DateTimeFormatter dtf = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                payload.put("deliveryDate", originalOrder.getDeliveryDate().format(dtf));
+                
+                java.text.NumberFormat vnf = java.text.NumberFormat.getInstance(java.util.Locale.of("vi", "VN"));
+                payload.put("originalTotal", vnf.format(originalOrder.getTotalAmount()));
+                payload.put("newTotal", vnf.format(savedNewOrder.getTotalAmount()));
+                
+                List<java.util.Map<String, Object>> itemsList = new ArrayList<>();
+                for (OrderDetail d : savedNewOrder.getOrderDetails()) {
+                     java.util.Map<String, Object> item = new java.util.HashMap<>();
+                     item.put("productName", d.getProduct().getName());
+                     item.put("quantity", vnf.format(d.getQuantity()));
+                     item.put("unitPrice", vnf.format(d.getUnitPrice()));
+                     item.put("totalPrice", vnf.format(d.getUnitPrice().multiply(BigDecimal.valueOf(d.getQuantity()))));
+                     itemsList.add(item);
+                }
+                payload.put("splitItems", itemsList);
                 
                 notificationService.createEmailNotification(
                         com.swp.ckms.enums.NotificationType.ORDER_STATUS_CHANGED,
                         recipient,
-                        "order-status-changed.html",
+                        "order-split.html",
                         payload,
                         "ORDER_SPLIT_" + originalOrder.getOrderId()
                 );

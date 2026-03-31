@@ -28,7 +28,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -57,8 +56,6 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final InvoiceRepository invoiceRepository;
     private final AhamoveShipmentService ahamoveShipmentService; // Inject AhamoveShipmentService để gọi khi cần thiết
     private final AllocationItemRepository allocationItemRepository;
-    private final com.swp.ckms.service.NotificationService notificationService;
-    private final com.swp.ckms.util.RecipientResolver recipientResolver;
     private final ShipmentStopRepository shipmentStopRepository;
     private final ShipmentFeeAllocationService shipmentFeeAllocationService;
     
@@ -199,40 +196,7 @@ public class ShipmentServiceImpl implements ShipmentService {
             log.error("Lỗi khi dispatch shipment #{} lên AhaMove: {}", shipmentId, e.getMessage());
         }
 
-        // --- TRIGGER NOTIFICATION ---
-        try {
-            Set<Long> notifiedStoreIds = new HashSet<>();
-            for (ShipmentStop stop : shipment.getStops()) {
-                if (stop.getStore() == null || !notifiedStoreIds.add(stop.getStore().getStoreId())) {
-                    continue;
-                }
-
-                String recipient = recipientResolver.resolveStoreManagerEmail(stop.getStore().getStoreId(),
-                        shipment.getCreatedBy() != null ? shipment.getCreatedBy().getUserId() : null);
-                if (recipient == null) {
-                    continue;
-                }
-
-                java.util.Map<String, Object> payload = new java.util.HashMap<>();
-                payload.put("shipmentId", shipment.getShipmentId());
-                payload.put("storeName", stop.getStore().getName());
-                payload.put("driverName", shipment.getDriverName());
-                payload.put("driverPhone", shipment.getDriverPhone());
-                payload.put("vehicleInfo", shipment.getVehicleInfo());
-                payload.put("trackingLink", "http://localhost:5173/shipments/" + shipment.getShipmentId());
-
-                notificationService.createEmailNotification(
-                        com.swp.ckms.enums.NotificationType.SHIPMENT_STARTED,
-                        recipient,
-                        "shipment-started.html",
-                        payload,
-                        "SHIPMENT_STARTED_" + shipment.getShipmentId() + "_STORE_" + stop.getStore().getStoreId()
-                );
-            }
-        } catch (Exception e) {
-            log.error("Failed to trigger shipment started notification", e);
-        }
-
+    
         log.info("Shipment #{} is now IN_TRANSIT", shipmentId);
 
         return mapToResponse(shipment);
@@ -248,8 +212,8 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         Shipment shipment = getShipmentOrThrow(shipmentId);
 
-        if (shipment.getStatus() != ShipmentStatus.IN_TRANSIT && shipment.getStatus() != ShipmentStatus.ARRIVED) {
-            throw new IllegalStateException("Shipment must be IN_TRANSIT or ARRIVED to confirm delivery. Current: " + shipment.getStatus());
+        if (shipment.getStatus() != ShipmentStatus.ARRIVED) {
+            throw new IllegalStateException("Shipment must be in ARRIVED status to confirm delivery. Current: " + shipment.getStatus());
         }
 
         ShipmentStop stop = getStopOrThrow(shipment, stopId);
@@ -349,11 +313,17 @@ public class ShipmentServiceImpl implements ShipmentService {
         Page<Shipment> page;
 
         if ("STORE".equalsIgnoreCase(ctx.getScope())) {
-            // Store staff only sees their store's shipments
+            // Store staff works at the stop level, not shipment level
             if (status != null) {
-                page = shipmentRepository.findDistinctByStops_Store_StoreIdAndStatus(ctx.getStoreId(), status, pageable);
+                ShipmentStopStatus stopStatus = mapToStopStatus(status);
+                if (stopStatus != null) {
+                    page = shipmentRepository.findByStoreIdAndStopStatus(ctx.getStoreId(), stopStatus, pageable);
+                } else {
+                    page = shipmentRepository.findDistinctByStops_Store_StoreIdAndStatus(ctx.getStoreId(), status, pageable);
+                }
             } else {
-                page = shipmentRepository.findDistinctByStops_Store_StoreId(ctx.getStoreId(), pageable);
+                // Default: Only show what is ready to be received (ARRIVED)
+                page = shipmentRepository.findByStoreIdAndStopStatus(ctx.getStoreId(), ShipmentStopStatus.ARRIVED, pageable);
             }
         } else {
             // System scope sees all
@@ -748,5 +718,17 @@ public class ShipmentServiceImpl implements ShipmentService {
                 && stop.getStore() != null
                 && storeId != null
                 && Objects.equals(stop.getStore().getStoreId(), storeId);
+    }
+    private ShipmentStopStatus mapToStopStatus(ShipmentStatus status) {
+        if (status == null) return null;
+        return switch (status) {
+            case ARRIVED -> ShipmentStopStatus.ARRIVED;
+            case DELIVERED -> ShipmentStopStatus.DELIVERED;
+            case IN_TRANSIT -> ShipmentStopStatus.IN_TRANSIT;
+            case PENDING, PREPARED -> ShipmentStopStatus.PENDING;
+            case CANCELLED, DELIVERY_FAILED -> ShipmentStopStatus.CANCELLED;
+            case RETURNED -> ShipmentStopStatus.RETURNED;
+            default -> null;
+        };
     }
 }

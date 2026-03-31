@@ -34,6 +34,8 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
     private final InventoryTransactionRepository inventoryTransactionRepository;
     private final ShipmentSourcingRecordRepository shipmentSourcingRecordRepository;
     private final AhamoveProperties ahamoveProperties;
+    private final com.swp.ckms.service.NotificationService notificationService;
+    private final com.swp.ckms.util.RecipientResolver recipientResolver;
 
     @Override
     @Transactional
@@ -146,6 +148,49 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
         }
 
         ShipmentStatus newStatus = mapAhamoveStatus(request.getStatus());
+        log.info("Nhận Webhook từ Ahamove: orderId={} | status={} | mappedStatus={}", 
+                request.getOrderId(), request.getStatus(), newStatus);
+
+        if ("ACCEPTED".equalsIgnoreCase(request.getStatus()) || "IN PROCESS".equalsIgnoreCase(request.getStatus())) {
+            log.info("Tiến hành gửi thông báo lộ trình cho Shipment #{} (Status: {})", shipment.getShipmentId(), request.getStatus());
+            // --- TRIGGER NOTIFICATION (Driver has accepted, info is available) ---
+            try {
+                java.util.Set<Long> notifiedStoreIds = new java.util.HashSet<>();
+                for (ShipmentStop stop : shipment.getStops()) {
+                    if (stop.getStore() == null || !notifiedStoreIds.add(stop.getStore().getStoreId())) {
+                        continue;
+                    }
+
+                    String recipient = recipientResolver.resolveStoreManagerEmail(stop.getStore().getStoreId(),
+                            shipment.getCreatedBy() != null ? shipment.getCreatedBy().getUserId() : null);
+                    
+                    if (recipient == null) {
+                        log.warn("Không tìm thấy email Quản lý cho Store #{} của Shipment #{}", 
+                                stop.getStore().getStoreId(), shipment.getShipmentId());
+                        continue;
+                    }
+
+                    java.util.Map<String, Object> payload = new java.util.HashMap<>();
+                    payload.put("shipmentId", shipment.getShipmentId());
+                    payload.put("storeName", stop.getStore().getName());
+                    payload.put("driverName", shipment.getDriverName() != null ? shipment.getDriverName() : "AhaMove Driver");
+                    payload.put("driverPhone", shipment.getDriverPhone() != null ? shipment.getDriverPhone() : "N/A");
+                    payload.put("vehicleInfo", shipment.getVehicleInfo() != null ? shipment.getVehicleInfo() : "Theo dõi qua Ahamove");
+                    payload.put("trackingLink", "http://localhost:5173/shipments/" + shipment.getShipmentId());
+
+                    notificationService.createEmailNotification(
+                            com.swp.ckms.enums.NotificationType.SHIPMENT_STARTED,
+                            recipient,
+                            "shipment-started.html",
+                            payload,
+                            "SHIPMENT_STARTED_" + shipment.getShipmentId() + "_STORE_" + stop.getStore().getStoreId()
+                    );
+                    log.info("Đã tạo email thông báo lộ trình cho Store: {} (Recipient: {})", stop.getStore().getName(), recipient);
+                }
+            } catch (Exception e) {
+                log.error("Failed to trigger shipment started notification via Ahamove Webhook", e);
+            }
+        }
 
         if (shipment.getStops() != null && !shipment.getStops().isEmpty()) {
             reconcileStopsFromWebhookPath(shipment, request);
@@ -179,11 +224,6 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
                 ShipmentStop onlyStop = shipment.getStops().get(0);
                 if (fallbackOrderStatus == OrderStatus.DELIVERED) {
                     markStopArrived(onlyStop, null);
-                    List<StoreOrder> stopOrders = storeOrderRepository.findByShipmentStop_StopId(onlyStop.getStopId());
-                    for (StoreOrder order : stopOrders) {
-                        order.setStatus(OrderStatus.ARRIVED);
-                    }
-                    storeOrderRepository.saveAll(stopOrders);
                 }
             }
         }
@@ -216,17 +256,6 @@ public class AhamoveShipmentServiceImpl implements AhamoveShipmentService {
 
             if (orderStatus == OrderStatus.DELIVERED) {
                 markStopArrived(stop, request);
-                List<StoreOrder> stopOrders = storeOrderRepository.findByShipmentStop_StopId(stop.getStopId());
-                boolean changed = false;
-                for (StoreOrder order : stopOrders) {
-                    if (order.getStatus() != OrderStatus.ARRIVED && order.getStatus() != OrderStatus.DELIVERED) {
-                        order.setStatus(OrderStatus.ARRIVED);
-                        changed = true;
-                    }
-                }
-                if (changed) {
-                    storeOrderRepository.saveAll(stopOrders);
-                }
                 continue;
             }
 

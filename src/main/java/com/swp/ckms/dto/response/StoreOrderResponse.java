@@ -28,4 +28,5 @@ public class StoreOrderResponse {
     private String storeName;
     private String storePhone;
     private List<OrderDetailResponse> orderDetails;
+    private String trackingLink;
 }

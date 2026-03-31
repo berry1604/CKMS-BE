@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; border: 1px solid #ddd; }
+        .header { border-bottom: 2px solid #d32f2f; padding-bottom: 10px; margin-bottom: 20px; text-align: center;}
+        .header h2 { color: #d32f2f; margin: 0; }
+        .details { background: #ffebee; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #d32f2f;}
+        .footer { font-size: 12px; color: #777; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px; text-align: center;}
+        .highlight { font-weight: bold; color: #212121; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Hệ thống CKMS - Thông báo Hủy Đơn Hàng</h2>
+        </div>
+        
+        <p>Xin chào quản lý cửa hàng <span class="highlight" th:text="${storeName}"></span>,</p>
+        
+        <p>Hệ thống ghi nhận đơn hàng số <span class="highlight">#<span th:text="${orderId}"></span></span> vừa mới bị <strong>hủy bỏ (CANCELLED)</strong>.</p>
+        
+        <div class="details">
+            <p><strong>Thông tin đơn bị hủy:</strong></p>
+            <ul>
+                <li><strong>Mã đơn:</strong> <span class="highlight">#<span th:text="${orderId}"></span></span></li>
+                <li><strong>Cửa hàng:</strong> <span th:text="${storeName}"></span></li>
+                <li><strong>Người tạo đơn ban đầu:</strong> <span th:text="${creatorName}"></span></li>
+                <li><strong>Người thực hiện hủy:</strong> <span th:text="${cancellerName}"></span></li>
+                <li><strong>Ngày đặt giao dự kiến:</strong> <span th:text="${deliveryDate}"></span></li>
+            </ul>
+        </div>
+
+        <p>Đơn hàng này sẽ không được chuyển lên hệ thống bếp trung tâm để sản xuất. Nếu đây là sự nhầm lẫn, vui lòng tạo lại đơn hàng mới trên hệ thống.</p>
+        
+        <p>Vui lòng kiểm tra chi tiết trên cổng thông tin để đảm bảo số lượng hàng cung cấp đủ cho kinh doanh.</p>
+        
+        <div class="footer">
+            Đây là email tự động, vui lòng không phản hồi.<br/>
+            © Central Kitchen Management System
+        </div>
+    </div>
+</body>
+</html>
