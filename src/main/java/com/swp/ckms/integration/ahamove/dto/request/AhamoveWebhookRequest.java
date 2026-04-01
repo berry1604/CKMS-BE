@@ -36,9 +36,11 @@ public class AhamoveWebhookRequest {
     // Comment khi CANCELLED hoặc FAILED
     private String comment;
 
-    // // Timestamp
-    // @JsonProperty("_id")
-    // private String requestId;
+    // Phí cập nhật thực tế từ Ahamove (nếu có)
+    private Double fee;
+
+    // Khoảng cách thực tế (nếu có)
+    private Double distance;
 
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)

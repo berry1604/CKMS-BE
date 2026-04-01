@@ -9,6 +9,7 @@ import com.swp.ckms.entity.*;
 import com.swp.ckms.enums.ShipmentStopStatus;
 import com.swp.ckms.enums.OrderStatus;
 import com.swp.ckms.enums.ShipmentStatus;
+import com.swp.ckms.exception.business.BusinessRuleViolationException;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
 import com.swp.ckms.repository.*;
 import com.swp.ckms.security.SecurityUtils;
@@ -28,7 +29,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -57,8 +57,6 @@ public class ShipmentServiceImpl implements ShipmentService {
     private final InvoiceRepository invoiceRepository;
     private final AhamoveShipmentService ahamoveShipmentService; // Inject AhamoveShipmentService để gọi khi cần thiết
     private final AllocationItemRepository allocationItemRepository;
-    private final com.swp.ckms.service.NotificationService notificationService;
-    private final com.swp.ckms.util.RecipientResolver recipientResolver;
     private final ShipmentStopRepository shipmentStopRepository;
     private final ShipmentFeeAllocationService shipmentFeeAllocationService;
     
@@ -199,40 +197,7 @@ public class ShipmentServiceImpl implements ShipmentService {
             log.error("Lỗi khi dispatch shipment #{} lên AhaMove: {}", shipmentId, e.getMessage());
         }
 
-        // --- TRIGGER NOTIFICATION ---
-        try {
-            Set<Long> notifiedStoreIds = new HashSet<>();
-            for (ShipmentStop stop : shipment.getStops()) {
-                if (stop.getStore() == null || !notifiedStoreIds.add(stop.getStore().getStoreId())) {
-                    continue;
-                }
-
-                String recipient = recipientResolver.resolveStoreManagerEmail(stop.getStore().getStoreId(),
-                        shipment.getCreatedBy() != null ? shipment.getCreatedBy().getUserId() : null);
-                if (recipient == null) {
-                    continue;
-                }
-
-                java.util.Map<String, Object> payload = new java.util.HashMap<>();
-                payload.put("shipmentId", shipment.getShipmentId());
-                payload.put("storeName", stop.getStore().getName());
-                payload.put("driverName", shipment.getDriverName());
-                payload.put("driverPhone", shipment.getDriverPhone());
-                payload.put("vehicleInfo", shipment.getVehicleInfo());
-                payload.put("trackingLink", "http://localhost:5173/shipments/" + shipment.getShipmentId());
-
-                notificationService.createEmailNotification(
-                        com.swp.ckms.enums.NotificationType.SHIPMENT_STARTED,
-                        recipient,
-                        "shipment-started.html",
-                        payload,
-                        "SHIPMENT_STARTED_" + shipment.getShipmentId() + "_STORE_" + stop.getStore().getStoreId()
-                );
-            }
-        } catch (Exception e) {
-            log.error("Failed to trigger shipment started notification", e);
-        }
-
+    
         log.info("Shipment #{} is now IN_TRANSIT", shipmentId);
 
         return mapToResponse(shipment);
@@ -248,13 +213,19 @@ public class ShipmentServiceImpl implements ShipmentService {
 
         Shipment shipment = getShipmentOrThrow(shipmentId);
 
-        if (shipment.getStatus() != ShipmentStatus.IN_TRANSIT && shipment.getStatus() != ShipmentStatus.ARRIVED) {
-            throw new IllegalStateException("Shipment must be IN_TRANSIT or ARRIVED to confirm delivery. Current: " + shipment.getStatus());
-        }
-
         ShipmentStop stop = getStopOrThrow(shipment, stopId);
+        List<StoreOrder> stopOrders = storeOrderRepository.findByShipmentStop_StopId(stop.getStopId());
+
+        // IDEMPOTENCY: If already delivered, just return success response
         if (stop.getStatus() == ShipmentStopStatus.DELIVERED) {
             return mapToResponse(shipment);
+        }
+
+        // Allow confirmation if shipment is IN_TRANSIT, ARRIVED, or RETURNED (partial return scenario)
+        if (shipment.getStatus() != ShipmentStatus.ARRIVED && 
+            shipment.getStatus() != ShipmentStatus.IN_TRANSIT &&
+            shipment.getStatus() != ShipmentStatus.RETURNED) {
+            throw new BusinessRuleViolationException("Shipment check: Trạng thái chuyến hàng (" + shipment.getStatus() + ") không cho phép xác nhận nhận hàng.");
         }
 
         if ("STORE".equalsIgnoreCase(ctx.getScope())) {
@@ -273,11 +244,12 @@ public class ShipmentServiceImpl implements ShipmentService {
                     : "Feedback: " + request.getFeedbackNote());
         }
 
-        List<StoreOrder> stopOrders = storeOrderRepository.findByShipmentStop_StopId(stop.getStopId());
-        for (StoreOrder order : stopOrders) {
-            order.setStatus(OrderStatus.DELIVERED);
+        if (!stopOrders.isEmpty()) {
+            for (StoreOrder order : stopOrders) {
+                order.setStatus(OrderStatus.DELIVERED);
+            }
+            storeOrderRepository.saveAll(stopOrders);
         }
-        storeOrderRepository.saveAll(stopOrders);
 
         confirmAndTransferStockForStop(shipment, stop, stopOrders);
 
@@ -289,9 +261,6 @@ public class ShipmentServiceImpl implements ShipmentService {
         }
 
         shipmentRepository.save(shipment);
-
-        log.info("Shipment #{} stop #{} confirmed by user {}", shipmentId, stopId, currentUser.getUsername());
-
         return mapToResponse(shipment);
     }
 
@@ -349,11 +318,25 @@ public class ShipmentServiceImpl implements ShipmentService {
         Page<Shipment> page;
 
         if ("STORE".equalsIgnoreCase(ctx.getScope())) {
-            // Store staff only sees their store's shipments
+            // Store staff works at the stop level. If no status provided, show what is pending receipt.
             if (status != null) {
-                page = shipmentRepository.findDistinctByStops_Store_StoreIdAndStatus(ctx.getStoreId(), status, pageable);
+                ShipmentStopStatus stopStatus = mapToStopStatus(status);
+                if (stopStatus != null) {
+                    if (stopStatus == ShipmentStopStatus.IN_TRANSIT || stopStatus == ShipmentStopStatus.ARRIVED) {
+                        // Store usually wants to see both "on the way" and "arrived" in their active delivery view
+                        page = shipmentRepository.findByStoreIdAndStopStatusIn(ctx.getStoreId(), 
+                                List.of(ShipmentStopStatus.IN_TRANSIT, ShipmentStopStatus.ARRIVED), pageable);
+                    } else {
+                        page = shipmentRepository.findByStoreIdAndStopStatus(ctx.getStoreId(), stopStatus, pageable);
+                    }
+                } else {
+                    // Fallback to shipment-level status if stop mapping fails
+                    page = shipmentRepository.findDistinctByStops_Store_StoreIdAndStatus(ctx.getStoreId(), status, pageable);
+                }
             } else {
-                page = shipmentRepository.findDistinctByStops_Store_StoreId(ctx.getStoreId(), pageable);
+                // Default: ONLY show stops that have physically arrived (ARRIVED) 
+                // to avoid cluttering the store's "To Receive" list with far-away trucks.
+                page = shipmentRepository.findByStoreIdAndStopStatus(ctx.getStoreId(), ShipmentStopStatus.ARRIVED, pageable);
             }
         } else {
             // System scope sees all
@@ -375,7 +358,22 @@ public class ShipmentServiceImpl implements ShipmentService {
     }
 
     private ShipmentResponse mapToResponse(Shipment shipment) {
+        UserContext ctx = SecurityUtils.getCurrentUserContext();
         List<StoreOrder> orders = storeOrderRepository.findByShipmentStop_Shipment_ShipmentId(shipment.getShipmentId());
+        
+        // Filter stops if user is from a specific store
+        if (ctx != null && "STORE".equalsIgnoreCase(ctx.getScope()) && ctx.getStoreId() != null) {
+            Long storeId = ctx.getStoreId();
+            shipment.setStops(shipment.getStops().stream()
+                    .filter(stop -> stop.getStore() != null && storeId.equals(stop.getStore().getStoreId()))
+                    .collect(Collectors.toList()));
+            
+            // Also filter orders to only those belonging to the store
+            orders = orders.stream()
+                    .filter(order -> order.getStore() != null && storeId.equals(order.getStore().getStoreId()))
+                    .collect(Collectors.toList());
+        }
+
         return mapToResponse(shipment, orders);
     }
 
@@ -748,5 +746,17 @@ public class ShipmentServiceImpl implements ShipmentService {
                 && stop.getStore() != null
                 && storeId != null
                 && Objects.equals(stop.getStore().getStoreId(), storeId);
+    }
+    private ShipmentStopStatus mapToStopStatus(ShipmentStatus status) {
+        if (status == null) return null;
+        return switch (status) {
+            case ARRIVED -> ShipmentStopStatus.ARRIVED;
+            case DELIVERED -> ShipmentStopStatus.DELIVERED;
+            case IN_TRANSIT -> ShipmentStopStatus.IN_TRANSIT;
+            case PENDING, PREPARED -> ShipmentStopStatus.PENDING;
+            case CANCELLED, DELIVERY_FAILED -> ShipmentStopStatus.CANCELLED;
+            case RETURNED -> ShipmentStopStatus.RETURNED;
+            default -> null;
+        };
     }
 }

@@ -7,6 +7,8 @@ import com.swp.ckms.entity.CentralKitchen;
 import com.swp.ckms.entity.KitchenWarehouse;
 import com.swp.ckms.entity.User;
 import com.swp.ckms.exception.business.ResourceNotFoundException;
+import com.swp.ckms.integration.goong.dto.response.GoongGeocodeResult;
+import com.swp.ckms.integration.goong.service.GoongService;
 import com.swp.ckms.repository.CentralKitchenRepository;
 import com.swp.ckms.repository.KitchenWarehouseRepository;
 import com.swp.ckms.repository.UserRepository;
@@ -29,16 +31,25 @@ public class KitchenServiceImpl implements KitchenService {
     private final UserRepository userRepository;
     private final KitchenWarehouseRepository warehouseRepository;
     private final com.swp.ckms.repository.ProductionPlanRepository productionPlanRepository;
+        private final GoongService goongService;
 
     @Override
     @Transactional
     public KitchenResponse createKitchen(KitchenCreateRequest request) {
+                Double latitude = request.getLatitude();
+                Double longitude = request.getLongitude();
+                if (latitude == null || longitude == null) {
+                        GoongGeocodeResult geocodeResult = goongService.geocodeFirstAddress(request.getAddress());
+                        latitude = geocodeResult.getLatitude();
+                        longitude = geocodeResult.getLongitude();
+                }
+
         CentralKitchen kitchen = CentralKitchen.builder()
                 .name(request.getName())
                 .address(request.getAddress())
                 .maxDailyCapacity(request.getMaxDailyCapacity())
-                .latitude(request.getLatitude())
-                .longitude(request.getLongitude())
+                                .latitude(latitude)
+                                .longitude(longitude)
                 .phone(request.getPhone())
                 .isActive(request.getIsActive() != null ? request.getIsActive() : true)
                 .build();
@@ -64,6 +75,7 @@ public class KitchenServiceImpl implements KitchenService {
 
         validateKitchenAccess(kitchenId);
 
+                String oldAddress = kitchen.getAddress();
         if (request.getName() != null) kitchen.setName(request.getName());
         if (request.getAddress() != null) kitchen.setAddress(request.getAddress());
         if (request.getMaxDailyCapacity() != null) kitchen.setMaxDailyCapacity(request.getMaxDailyCapacity());
@@ -71,6 +83,14 @@ public class KitchenServiceImpl implements KitchenService {
         if (request.getLongitude() != null) kitchen.setLongitude(request.getLongitude());
         if (request.getPhone() != null) kitchen.setPhone(request.getPhone());
         if (request.getIsActive() != null) kitchen.setIsActive(request.getIsActive());
+
+                boolean addressChanged = request.getAddress() != null && !request.getAddress().equals(oldAddress);
+                boolean hasManualCoordinates = request.getLatitude() != null && request.getLongitude() != null;
+                if (addressChanged && !hasManualCoordinates) {
+                        GoongGeocodeResult geocodeResult = goongService.geocodeFirstAddress(request.getAddress());
+                        kitchen.setLatitude(geocodeResult.getLatitude());
+                        kitchen.setLongitude(geocodeResult.getLongitude());
+                }
 
         return mapToResponse(kitchenRepository.save(kitchen));
     }
@@ -134,18 +154,18 @@ public class KitchenServiceImpl implements KitchenService {
                 kitchenId, com.swp.ckms.enums.ProductionPlanStatus.IN_PRODUCTION);
         String currentStatus = isProducing ? "IN_PRODUCTION" : "IDLE";
 
-        // 2. activePlanCount: count plans that are active (any date, matching statuses)
-        java.util.List<com.swp.ckms.enums.ProductionPlanStatus> activeStatuses = java.util.List.of(
+        // 3. todayUsedCapacity: sum of planned quantities for ALL non-cancelled plans TODAY
+        java.util.List<com.swp.ckms.enums.ProductionPlanStatus> cumulativeStatuses = java.util.List.of(
                 com.swp.ckms.enums.ProductionPlanStatus.PLANNED,
                 com.swp.ckms.enums.ProductionPlanStatus.READY_TO_PRODUCE,
-                com.swp.ckms.enums.ProductionPlanStatus.IN_PRODUCTION);
+                com.swp.ckms.enums.ProductionPlanStatus.IN_PRODUCTION,
+                com.swp.ckms.enums.ProductionPlanStatus.PRODUCED,
+                com.swp.ckms.enums.ProductionPlanStatus.FINISHED);
 
-        long activePlanCount = productionPlanRepository.countByKitchen_KitchenIdAndStatusIn(
-                kitchenId, activeStatuses);
+        long activePlanCount = productionPlanRepository.countByKitchen_KitchenIdAndStatusIn(kitchenId, cumulativeStatuses);
 
-        // 3. todayUsedCapacity: sum of planned quantities for active plans
         java.math.BigDecimal todayUsedCapacity = productionPlanRepository
-                .sumPlannedQuantityByKitchenAndStatuses(kitchenId, activeStatuses);
+                .sumPlannedQuantityByKitchenAndDate(kitchenId, java.time.LocalDate.now());
         if (todayUsedCapacity == null) todayUsedCapacity = java.math.BigDecimal.ZERO;
 
         return KitchenResponse.builder()

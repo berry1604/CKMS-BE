@@ -100,7 +100,7 @@ public class DataSeeder implements CommandLineRunner {
                 .filter(p -> managerCodes.contains(p.getCode()))
                 .collect(Collectors.toSet());
         Role managerRole = seedRole("MANAGER", managerPrivileges);
-        seedUser("manager", "manager@ckms.com", "manager", "Operation Manager", managerRole, null, defaultKitchen);
+        seedUser("manager", "manager@ckms.com", "manager", "Operation Manager", managerRole, null, null);
 
         // 3. COORDINATOR - Planning: Duyệt đơn, Lập kế hoạch, Giao hàng
         Set<String> coordinatorCodes = new HashSet<>(Arrays.asList(
@@ -119,9 +119,9 @@ public class DataSeeder implements CommandLineRunner {
         // 4. KITCHEN_STAFF - Execution: Sản xuất & Kho bếp
         Set<String> kitchenCodes = new HashSet<>(Arrays.asList(
                 "VIEW_PRODUCTION_PLAN", "EXECUTE_PRODUCTION", "UPDATE_PRODUCTION_PLAN",
-                "VIEW_KITCHEN_INVENTORY", "UPDATE_KITCHEN_INVENTORY", "ADJUST_KITCHEN_STOCK",
+                "VIEW_KITCHEN_INVENTORY", "UPDATE_KITCHEN_INVENTORY", "ADJUST_KITCHEN_STOCK","VIEW_PRODUCTION_PLAN",
                 "START_SHIPMENT", "VIEW_SHIPMENT", "VIEW_PRODUCT", "VIEW_MATERIAL", 
-                "PREPARE_SHIPMENT", "VIEW_KITCHEN"
+                "PREPARE_SHIPMENT", "VIEW_KITCHEN","VIEW_STORE_ORDER"
         ));
         Set<Privilege> kitchenPrivileges = allPrivileges.stream()
                 .filter(p -> kitchenCodes.contains(p.getCode()))
@@ -210,8 +210,8 @@ public class DataSeeder implements CommandLineRunner {
                     .address("Số 1 Mạc Đĩnh Chi, Phường Đa Kao, Quận 1, Thành phố Hồ Chí Minh")
                     .paymentCycle("MONTHLY")
                     .phoneNumber("84377774968")
-                    .latitude("10.782140")
-                    .longitude("106.701484")
+                    .latitude(10.782140)
+                    .longitude(106.701484)
                     .build());
             System.out.println(">>> Seeded default Franchise Store");
 

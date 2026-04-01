@@ -49,7 +49,7 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     int updateOrderStatusToReadyByPlanId(@Param("planId") Long planId);
 
     @Modifying
-    @Query("UPDATE StoreOrder o SET o.productionPlan = NULL, o.status = com.swp.ckms.enums.OrderStatus.APPROVED WHERE o.productionPlan.planId = :planId")
+    @Query("UPDATE StoreOrder o SET o.productionPlan = NULL, o.status = com.swp.ckms.enums.OrderStatus.APPROVED WHERE o.productionPlan.planId = :planId AND o.status IN (com.swp.ckms.enums.OrderStatus.SCHEDULED, com.swp.ckms.enums.OrderStatus.LOCKED)")
     int releaseOrdersFromPlan(@Param("planId") Long planId);
 
     // List<StoreOrder> findByShipment_ShipmentId(Long shipmentId);
@@ -60,7 +60,7 @@ public interface StoreOrderRepository extends JpaRepository<StoreOrder, Long>, J
     java.math.BigDecimal sumQuantityByOrderIds(@Param("orderIds") List<Long> orderIds);
 
     @Modifying
-    @Query("UPDATE StoreOrder o SET o.status = :status WHERE o.productionPlan.planId = :planId")
+    @Query("UPDATE StoreOrder o SET o.status = :status WHERE o.productionPlan.planId = :planId AND o.status = com.swp.ckms.enums.OrderStatus.SCHEDULED")
     int updateStatusByPlanId(@Param("planId") Long planId, @Param("status") OrderStatus status);
 
     @Query("""

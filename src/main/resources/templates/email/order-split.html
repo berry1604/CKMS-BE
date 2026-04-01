@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; border: 1px solid #ddd; }
+        .header { border-bottom: 2px solid #ed6c02; padding-bottom: 10px; margin-bottom: 20px; text-align: center;}
+        .header h2 { color: #ed6c02; margin: 0; }
+        .details { background: #fdf9f9; padding: 15px; border-radius: 4px; margin-bottom: 20px; border-left: 4px solid #ed6c02;}
+        .footer { font-size: 12px; color: #777; margin-top: 20px; border-top: 1px solid #ddd; padding-top: 10px; text-align: center;}
+        .highlight { font-weight: bold; color: #d32f2f; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; border-bottom: 1px solid #eee; text-align: left; }
+        th { background: #f4f4f4; color: #555; }
+        .text-right { text-align: right; }
+        .summary-box { background: #f0f7ff; padding: 15px; border-radius: 5px; margin-top: 20px; border: 1px solid #c2e0ff;}
+        .total-row { font-weight: bold; font-size: 16px; border-top: 2px solid #ddd;}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>📦 Thông Báo Tách Đơn Hàng</h2>
+        </div>
+        
+        <p>Xin chào,</p>
+        
+        <p>Hệ thống CKMS xin thông báo, đơn hàng <span class="highlight">#<span th:text="${originalOrderId}"></span></span> của Cửa hàng đã được chuyên viên điều phối tách thành công thành một đơn hàng mới.</p>
+        
+        <div class="summary-box">
+            <strong>Thông tin tổng quan:</strong>
+            <ul>
+                <li><strong>Đơn hàng gốc (Đã cập nhật):</strong> Mã đơn <span class="highlight">#<span th:text="${originalOrderId}"></span></span> - Giá trị mới: <span style="font-weight:bold; color: #2E7D32" th:text="${originalTotal}"></span>đ</li>
+                <li><strong>Đơn hàng mới tách ra:</strong> Mã đơn <span class="highlight">#<span th:text="${newOrderId}"></span></span> - Giá trị mới: <span style="font-weight:bold; color: #2E7D32" th:text="${newTotal}"></span>đ</li>
+                <li><strong>Ngày giao hàng (Đơn mới):</strong> <span class="highlight" th:text="${deliveryDate}"></span></li>
+            </ul>
+        </div>
+        
+        <div class="details">
+            <h3>Chi tiết các món hàng được tách sang Đơn Mới (#<span th:text="${newOrderId}"></span>)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Tên hàng hóa</th>
+                        <th class="text-right">Số lượng tách</th>
+                        <th class="text-right">Đơn giá</th>
+                        <th class="text-right">Thành tiền</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="item : ${splitItems}">
+                        <td th:text="${item.productName}">Ví dụ Sản Phẩm</td>
+                        <td class="text-right" th:text="${item.quantity}">10</td>
+                        <td class="text-right" th:text="${item.unitPrice} + 'đ'">5,000đ</td>
+                        <td class="text-right" th:text="${item.totalPrice} + 'đ'">50,000đ</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p>Hóa đơn tài chính (Invoice) của 2 đơn hàng này cũng đã được hệ thống tách và cập nhật tự động. Vui lòng đăng nhập hệ thống để xem chi tiết tình trạng đơn.</p>
+        
+        <div class="footer">
+            Đây là email tự động từ hệ thống điều phối, vui lòng không phản hồi.<br/>
+            © Central Kitchen Management System
+        </div>
+    </div>
+</body>
+</html>

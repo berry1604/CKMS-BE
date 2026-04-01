@@ -42,7 +42,7 @@ public class RecipientResolver {
 
     public String resolveCoordinatorEmail(Long kitchenId) {
         List<User> coordinators = userRepository.findAll().stream()
-                .filter(u -> u.getKitchen() != null && u.getKitchen().getKitchenId().equals(kitchenId))
+                .filter(u -> (u.getKitchen() == null || u.getKitchen().getKitchenId().equals(kitchenId)))
                 .filter(u -> u.getRole() != null && "COORDINATOR".equals(u.getRole().getRoleName()))
                 .filter(User::getIsActive)
                 .toList();
