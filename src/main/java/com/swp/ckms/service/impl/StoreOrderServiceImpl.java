@@ -619,8 +619,11 @@ public class StoreOrderServiceImpl implements StoreOrderService {
         // If order is allocated or further, fetch allocation items for precise display
         if (order.getStatus() == OrderStatus.ALLOCATED || 
             order.getStatus() == OrderStatus.IN_TRANSIT || 
+            order.getStatus() == OrderStatus.ARRIVED || 
             order.getStatus() == OrderStatus.DELIVERED || 
-            order.getStatus() == OrderStatus.CONFIRMED) {
+            order.getStatus() == OrderStatus.CONFIRMED ||
+            order.getStatus() == OrderStatus.RETURNED ||
+            order.getStatus() == OrderStatus.CANCELLED) {
             
             List<AllocationItem> allocationItems = allocationItemRepository.findByOrder_OrderId(order.getOrderId());
             allocationMap = allocationItems.stream()
