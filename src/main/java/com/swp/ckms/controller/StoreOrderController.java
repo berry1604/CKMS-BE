@@ -50,7 +50,7 @@ public class StoreOrderController {
     }
     
     @GetMapping
-    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER')")
+    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER') or hasAnyRole('MANAGER', 'ADMIN', 'COORDINATOR')")
     public ResponseEntity<Page<StoreOrderResponse>> getAllOrders(
             @RequestParam(required = false) OrderStatus status,
             @RequestParam(defaultValue = "0") int page,
@@ -71,7 +71,7 @@ public class StoreOrderController {
     }
     
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER') or hasAuthority('VIEW_MY_ORDERS')")
+    @PreAuthorize("hasAuthority('VIEW_STORE_ORDER') or hasAuthority('VIEW_MY_ORDERS') or hasAnyRole('MANAGER', 'ADMIN', 'COORDINATOR')")
     public ResponseEntity<StoreOrderResponse> getOrderById(@PathVariable Long id) {
         StoreOrderResponse response = storeOrderService.getOrderById(id);
         return ResponseEntity.ok(response);

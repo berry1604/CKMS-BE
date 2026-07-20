@@ -81,7 +81,7 @@ public class BillingStatementController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('VIEW_BILLING')")
+    @PreAuthorize("hasAuthority('VIEW_BILLING') or hasAnyRole('MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<Page<BillingStatementSummaryResponse>>> getStatements(
             @RequestParam(required = false) Long storeId,
             @RequestParam(required = false) BillingStatementStatus status,
@@ -99,7 +99,7 @@ public class BillingStatementController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('VIEW_BILLING')")
+    @PreAuthorize("hasAuthority('VIEW_BILLING') or hasAnyRole('MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<BillingStatementDetailResponse>> getStatementDetail(@PathVariable Long id) {
         BillingStatementDetailResponse response = billingStatementService.getStatementById(id);
         

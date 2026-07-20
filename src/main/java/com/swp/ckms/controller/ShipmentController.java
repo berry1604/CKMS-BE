@@ -102,7 +102,7 @@ public class ShipmentController {
 
     // Xem chi tiết shipment
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('VIEW_SHIPMENT')")
+    @PreAuthorize("hasAuthority('VIEW_SHIPMENT') or hasAnyRole('MANAGER', 'ADMIN', 'COORDINATOR')")
     public ResponseEntity<ApiResponse<ShipmentResponse>> getShipment(@PathVariable Long id) {
 
         ShipmentResponse response = shipmentService.getShipmentById(id);
@@ -116,7 +116,7 @@ public class ShipmentController {
 
     // Danh sách shipments (auto-filter by scope)
     @GetMapping
-    @PreAuthorize("hasAuthority('VIEW_SHIPMENT')")
+    @PreAuthorize("hasAuthority('VIEW_SHIPMENT') or hasAnyRole('MANAGER', 'ADMIN', 'COORDINATOR')")
     public ResponseEntity<ApiResponse<Page<ShipmentResponse>>> getShipments(
             @RequestParam(required = false) ShipmentStatus status,
             Pageable pageable) {

@@ -81,7 +81,7 @@ public class ProductionPlanController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('VIEW_PRODUCTION_PLAN')")
+    @PreAuthorize("hasAuthority('VIEW_PRODUCTION_PLAN') or hasAnyRole('MANAGER', 'ADMIN', 'COORDINATOR')")
     public ResponseEntity<Page<ProductionPlanSummaryResponse>> getAllProductionPlans(
             @RequestParam(required = false) ProductionPlanStatus status,
             Pageable pageable) {
@@ -89,7 +89,7 @@ public class ProductionPlanController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('VIEW_PRODUCTION_PLAN')")
+    @PreAuthorize("hasAuthority('VIEW_PRODUCTION_PLAN') or hasAnyRole('MANAGER', 'ADMIN', 'COORDINATOR')")
     public ResponseEntity<ProductionPlanDetailResponse> getProductionPlanDetail(@PathVariable Long id) {
         return ResponseEntity.ok(productionPlanService.getProductionPlanDetail(id));
     }

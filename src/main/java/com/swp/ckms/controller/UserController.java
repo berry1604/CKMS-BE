@@ -27,7 +27,7 @@ public class UserController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('VIEW_USER')")
+    @PreAuthorize("hasAuthority('VIEW_USER') or hasAnyRole('MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<Page<UserResponse>>> getUsers(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
@@ -45,7 +45,7 @@ public class UserController {
     }
 
     @GetMapping("/search")
-    @PreAuthorize("hasAuthority('VIEW_USER')")
+    @PreAuthorize("hasAuthority('VIEW_USER') or hasAnyRole('MANAGER', 'ADMIN')")
     public ResponseEntity<ApiResponse<UserResponse>> getUserByUsernameOrEmail(
             @RequestParam(required = false) String username,
             @RequestParam(required = false) String email
